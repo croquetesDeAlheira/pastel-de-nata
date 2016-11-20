@@ -98,6 +98,8 @@ char ** getTokens (char* token) {
 // Função que imprime uma mensagem para o cliente
 void print_msg(struct message_t *msg) {
 	int i;
+	char *noKeys = "essa chave não existe";
+	char *value; 
 	//printf("opcode: %d, c_type: %d\n", msg->opcode, msg->c_type);
 	switch(msg->c_type) {
 		case CT_ENTRY:{
@@ -120,8 +122,10 @@ void print_msg(struct message_t *msg) {
 			}
 		}break;
 		case CT_VALUE:{
-			printf("data: %s\n",(char*)msg->content.data->data);
-			printf("datasize: %d\n", msg->content.data->datasize);
+			value = (char*)msg->content.data->data;
+			printf("data: %s\n",value);
+			if (strcmp(value, noKeys) != 0)
+				printf("datasize: %d\n", msg->content.data->datasize);
 			
 		}break;
 		case CT_RESULT:{
