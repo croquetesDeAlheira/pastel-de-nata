@@ -1,13 +1,18 @@
-- Quando fazemos del key, costuma aparecer o erro
-*** Error in `./table-client': double free or corruption (fasttop): 0x094cd0a8 ***
-- Quando fazemos del key, sem que esta existe, duas vezes seguida então o erro em cima aparece
-- Exemplo: se fizermos del a, update a, sem que este exista o erro em cima volta a aparecer
+/*
+*   Grupo 12
+* @author Daniel Santos 44887
+* @author Luis Barros  47082
+* @author Marcus Dias 44901
+*/
 
-- O table client não está a reconhecer o size e quit
+- Esta parte do trabalho contém leaks que não foram tratadas por falta de tempo.
 
-- Sequência de códigos
-	put a a
-	del a
-	put a a
-Erro: *** Error in `./table-client': malloc(): memory corruption (fast): 0x080c0069 ***
+- A nossa implementação do comando para pedir todas as cheves é feito da seguinte maneira: GET ! 
+
+- No caso de um get de uma chave que não existe ou um get ! quando a tabela está vazia,
+  resolvemos apresentar uma mensagem informativa no terminal, tendo este procedimento sido tratado do lado do cliente. Isto significa que o servidor segue o protocolo estipulado para respostas a pedidos.
+
+
+
+
   

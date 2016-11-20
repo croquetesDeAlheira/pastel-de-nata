@@ -1,3 +1,12 @@
+/*
+* Grupo 12
+* @author Daniel Santos 44887
+* @author Luis Barros  47082
+* @author Marcus Dias 44901
+*/
+
+// Codigos usados por nos neste projeto
+
 #ifndef _CODES_H
 #define _CODES_H
 

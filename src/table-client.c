@@ -124,6 +124,8 @@ void print_msg(struct message_t *msg) {
 		case CT_VALUE:{
 			value = (char*)msg->content.data->data;
 			printf("data: %s\n",value);
+			// Get é NULL e value contém msg de aviso
+			// Nao imprime o data size
 			if (strcmp(value, noKeys) != 0)
 				printf("datasize: %d\n", msg->content.data->datasize);
 			
