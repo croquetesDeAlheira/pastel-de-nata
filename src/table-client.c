@@ -297,8 +297,9 @@ int main(int argc, char **argv){
 					keys = rtable_get_keys(table);
 					if(keys == NULL){
 						//ocorreu um erro
-						printf("ocorreu um erro\n");
-						continue;
+						printErrors(ERROR_SYS);
+            print = 0;
+						break;
 
 					}
 					// Cria a mensagem a imprimir
@@ -310,8 +311,9 @@ int main(int argc, char **argv){
 					// Cria a mensagem a imprimir
 					if(data == NULL){
 						//ocorreu um erro
-						printf("ocorreu um erro\n");
-						continue;
+						printErrors(ERROR_SYS);
+            print = 0;
+						break;
 					}
 					msg->c_type = CT_VALUE;
 					msg->content.data = data;
