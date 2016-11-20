@@ -23,7 +23,6 @@ const int ERROR = -1;
 
 
 int message_to_buffer(struct message_t *msg, char **msg_buf){
-	printf("msg 2 buff init\n");
 
 	/* Verificar se msg é NULL */
 	if(msg == NULL){ return  ERROR; }
@@ -127,7 +126,7 @@ int message_to_buffer(struct message_t *msg, char **msg_buf){
 			/* serializar value tipo data_t  */
 			/* datasize , tamanho do data  */
 			if(msg->content.data == NULL){
-				dataSize == 0;
+				dataSize = 0;
 			}else{
 				dataSize = msg->content.data->datasize;
 			}
@@ -142,7 +141,6 @@ int message_to_buffer(struct message_t *msg, char **msg_buf){
 			break;
 
 		case CT_KEY :
-			printf("inside ct key msg buf\n");
 			if(msg->content.key == NULL){
 				//não existe a chave
 				strSize = 0;
@@ -155,7 +153,6 @@ int message_to_buffer(struct message_t *msg, char **msg_buf){
 			ptr += _SHORT;
 			memcpy(ptr, msg->content.key , strSize); //sem o \0
 			ptr += strSize;
-			printf("fim msg buff\n");
 			break;
 
 		case CT_KEYS :
@@ -240,31 +237,33 @@ struct message_t *buffer_to_message(char *msg_buf, int msg_size){
 				memcpy(&int_aux, msg_buf, _INT);
 				dataSize = ntohl(int_aux);
 				msg_buf += _INT;
-				dataBuff = (void *)malloc(dataSize);
-				if(dataBuff == NULL){ return NULL; }
-				memcpy(dataBuff, msg_buf, dataSize);
-				msg_buf += dataSize;
-				value = data_create2(dataSize, dataBuff);
-				free(dataBuff);
-				if(value == NULL){return NULL; }
-				msg->content.data = value;
+				if(dataSize == 0){
+					//nao esta a ser enviado nada no data
+					msg->content.data = NULL;
+				}else{
+					dataBuff = (void *)malloc(dataSize);
+					if(dataBuff == NULL){ return NULL;}
+					memcpy(dataBuff, msg_buf, dataSize);
+					msg_buf += dataSize;
+					value = data_create2(dataSize, dataBuff);
+					free(dataBuff);
+					if(value == NULL){return NULL;}
+					msg->content.data = value;
+				}
 				break;
 			case CT_KEY :
 				memcpy(&short_aux, msg_buf, _SHORT);
 				strSize = ntohs(short_aux);
 				msg_buf += _SHORT;
 				//verify if 0
-				printf("inside key\n");
 				if(strSize == 0){
 					msg->content.key = NULL;
-					msg_buf += 1;
 				}else{
 					msg->content.key = (char *)malloc(strSize + 1);
 					memcpy(msg->content.key, msg_buf, strSize);
 					msg->content.key[strSize] = '\0';
 					msg_buf += strSize;
 				}
-				printf("sai key\n");
 				break;
 			case CT_KEYS :
 				memcpy(&int_aux, msg_buf, _INT);
@@ -325,7 +324,6 @@ struct message_t *buffer_to_message(char *msg_buf, int msg_size){
 
 		}
 	}else{
-		printf("dentro else\n");
 		free(msg);
 		return NULL;
 	}

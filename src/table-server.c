@@ -182,9 +182,7 @@ int network_receive_send(int sockfd){
 	}
 
 	/* Serializar a mensagem recebida */
-	printf("serializar agora\n");
 	message_size = message_to_buffer(msg_resposta, &message_resposta);
-	printf("size = %d\n",  message_size);
 	/* Verificar se a serialização teve sucesso */
 	if(message_resposta <= OK){return ERROR;}
 	/* Enviar ao cliente o tamanho da mensagem que será enviada
