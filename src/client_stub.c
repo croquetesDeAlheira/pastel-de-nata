@@ -182,7 +182,7 @@ struct data_t *rtable_get(struct rtable_t *table, char *key){
 	}
 	//Se data vem a NULL é porque não existem keys
 	if(msg_resposta->content.data == NULL){
-		char *noKeys = "Não existem chaves";
+		char *noKeys = "essa chave não existe";
 		return data_create2(strlen(noKeys), noKeys);
 	}
 	// Mensagem de pedido já não é necessária

@@ -108,11 +108,16 @@ void print_msg(struct message_t *msg) {
 			printf("key: %s\n", msg->content.key);
 		}break;
 		case CT_KEYS:{
+			if(msg->content.keys[0] == NULL){
+				//não existe keys
+				printf("tabela vazia\n");
+			}else{
 				int i = 0;
 				while(msg->content.keys[i] != NULL){
 					printf("key[%d]: %s\n", i, msg->content.keys[i]);
 					i++;
 				}
+			}
 		}break;
 		case CT_VALUE:{
 			printf("data: %s\n",(char*)msg->content.data->data);

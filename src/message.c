@@ -272,7 +272,7 @@ struct message_t *buffer_to_message(char *msg_buf, int msg_size){
 				char **keys;
 				if(numKeys == 0){
 					keys = (char **)malloc(1);
-					*(keys) == NULL;
+					*(keys) = NULL;
 				}else{
 					keys = (char **)malloc( (sizeof(char *) * numKeys ) + 1);
 					int i = 0;
