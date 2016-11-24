@@ -22,21 +22,30 @@
 */
 struct message_t *network_with_retry(struct rtable_t *table, struct message_t *msg_pedido){
 	struct message_t *msg_resposta;
+	// Primeira tentativa a contactar servidor primário
 	msg_resposta = network_send_receive(table->server, msg_pedido);
+
 	if(msg_resposta == NULL){
+		// Não consegu contactar
+		// Aguarda um tempo e tenta de novo
 		perror("Problema com a mensagem de resposta, tentar novamente..\n");
 		sleep(RETRY_TIME);
 
+		// Fecha a ligação
 		if(network_close(table->server) < 0){
 			perror("Problema ao terminar a associação entre cliente e tabela remota\n");
 		}
-		table->server = network_connect(table->ipAddr);
+		// Nova ligação
+		table->server = network_connect(table->ipAddr1);
 		if(table->server == NULL){
 			perror("Problema na conecção\n");
 			return NULL;
 		}
+		// Segunda tentativa a contactar o servidor
 		msg_resposta = network_send_receive(table->server, msg_pedido);
 		if(msg_resposta == NULL){
+			// Não consegue e desiste
+			// Deverá ser aqui que contacta o servidor secundario
 			perror("sem resposta do servidor\n");
 		}
 	}
@@ -71,7 +80,6 @@ struct rtable_t *rtable_bind(const char *address_port){
 		perror("Problema na conecção\n");
 		return NULL;
 	}
-	rtable->ipAddr = strdup(address_port);
 
 	return rtable;	
 }
@@ -83,8 +91,17 @@ struct rtable_t *rtable_bind(const char *address_port){
 int rtable_unbind(struct rtable_t *rtable){
 	if(network_close(rtable->server) < 0){
 		perror("Problema ao terminar a associação entre cliente e tabela remota\n");
+		// Liberta a memoria
+		free(rtable->ipAddr_1);
+		free(rtable->ipAddr_2);
+		free(rtable);
+
 		return ERROR;
-	}	
+	}
+	// Memoria da estrutura server_t ja libertada ao fazer network_close
+	// Libertar o resto da rtable
+	free(rtable->ipAddr_1);
+	free(rtable->ipAddr_2);
 	free(rtable);
 	return OK;
 }
@@ -296,6 +313,38 @@ char **rtable_get_keys(struct rtable_t *rtable){
 void rtable_free_keys(char **keys){
 	table_free_keys(keys);
 }
+
+/*
+Função que inicializa uma tabela remota
+e aloca os endereços dos servidores
+*/
+rtable_t* main_bind_rtable(char* server1, char*server2) {
+	// Remote table
+	struct rtable_t *rtable;
+	// Inicializar remote table
+	rtable = rtable_bind(server1);
+	// Verifica criação
+	if (rtable = NULL) {return NULL;}
+	// Aloca endereços de servidores a tabela remota
+	// primario e secundario
+	rtable->ipAddr_1 = strdup(server1);
+	rtable->ipAddr_2 = strdup(server2);
+
+	// Verifica argumentos
+	if(rtable->ipAddr_1 == NULL) {
+		free(rtable);
+		return NULL;
+	}
+
+	if (rtable->ipAddr_2 == NULL) {
+		free(ipAddr_1);
+		free(rtable);
+		return NULL;
+	}
+
+	return rtable;
+}
+
 
 
 

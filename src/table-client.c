@@ -208,15 +208,19 @@ int main(int argc, char **argv){
 	const char get_all_keys[2] = "!";
 
 	/* Testar os argumentos de entrada */
-	if (argc != 2 || argv == NULL || argv[1] == NULL) { 
+	if (argc != 3 || argv == NULL || argv[1] == NULL || argv[2] == NULL) { 
 		perror("Erro de argumentos.\n");
-		printf("Exemplo de uso: /table_client 10.101.148.144:54321\n");
+		printf("Exemplo de uso: /table_client 10.101.148.144:54321 11.101.148.144:55555\n");
 		return ERROR; 
 	}
 
-	/* Usar r_table_bind para ligar-se a uma tabela remota */
-	// Passa ip:porto
-	table = rtable_bind(argv[1]);
+	/*
+	Esta função faz o devolve uma rtable_t*
+	Chama o rtable_bind e aloca na tabela remota 
+	os endereços dos servidores
+	*/
+	table = main_bind_rtable(argv[1], argv[2]);
+
 
 	if (table == NULL) {
 		perror("Tabela indisponivel, Por favor tente mais tarde.\n");
