@@ -22,6 +22,7 @@
 
 
 struct server_t *network_connect(const char *address_port){
+	printf("start network_connect\n");
 	struct server_t *server = (struct server_t*)malloc(sizeof(struct server_t));
 	
 	/* Verificar parâmetro da função e alocação de memória */
@@ -91,6 +92,7 @@ struct server_t *network_connect(const char *address_port){
 
 	/* Se a ligação não foi estabelecida, retornar NULL */
 	server->socket = sockt;
+	printf("fim connect\n");
 	return server;
 	
 }

@@ -9,14 +9,14 @@
  */
 struct rtable_t{
 	struct server_t *server;
-	char *ipAddr_1;
-  char *piAddr_2;
+	char *primario;
+  	char *secundario;
 };
 
 /*
 Função que inicializa uma tabela remota
 e aloca os endereços dos servidores
 */
-rtable_t* main_bind_rtable(char* server1, char*server2);
+struct rtable_t *main_bind_rtable(const char* server1,const char*server2);
 
 #endif

@@ -80,6 +80,7 @@ struct rtable_t *rtable_bind(const char *address_port){
 		perror("Problema na conecção\n");
 		return NULL;
 	}
+	printf("fin do bind\n");
 	return rtable;	
 }
 

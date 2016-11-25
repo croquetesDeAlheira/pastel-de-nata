@@ -221,7 +221,7 @@ int main(int argc, char **argv){
 	*/
 	printf("will bind now\n");
 	table = main_bind_rtable(argv[1], argv[2]);
-	printf("binded\n");
+	printf("binded\n";
 
 	if (table == NULL) {
 		perror("Tabela indisponivel, Por favor tente mais tarde.\n");
