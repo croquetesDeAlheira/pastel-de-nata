@@ -16,6 +16,7 @@
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <signal.h>
+#include <stdio.h>
 
 
 #include "../include/inet.h"
@@ -32,7 +33,7 @@
 
 //variaveis globais
 int i;
-int numFDs = 1;
+int numFDs = 2;
 struct pollfd socketsPoll[NCLIENTS];
 
 
@@ -212,6 +213,7 @@ int network_receive_send(int sockfd){
 int main(int argc, char **argv){
 	//remover nao usados depois...
 	int listening_socket;
+	int stdin_fd;
 	int connsock;
 	int result;
 	int client_on = TRUE;
@@ -255,6 +257,11 @@ int main(int argc, char **argv){
 	socketsPoll[0].fd = listening_socket;
 	socketsPoll[0].events = POLLIN;
 
+	//o segundo elem deve ser o stdin (para capturar o "print")
+	stdin_fd = STDIN_FILENO;
+	socketsPoll[1].fd = stdin_fd;
+	socketsPoll[1].events = POLLIN;
+
 	/* ciclo para receber os clients conectados */
 
 	printf("a espera de clientes...\n");
@@ -297,35 +304,64 @@ int main(int argc, char **argv){
 						printf("cliente conectado\n");
      			
      					//fim do if do listening
-     				}else{/* não é o listening....então deve ser outro...*/
-     					close_conn = FALSE;
-     					client_on = TRUE;
-     					printf("cliente fez pedido\n");
-     					//while(client_on){
-     						//receive data
-     					int result = network_receive_send(socketsPoll[i].fd);
-     					if(result < 0){ 
-     						//ou mal recebida ou o cliente desconectou
-     						// -> close connection
-     						printf("cliente desconectou\n");
-     						 //fecha o fileDescriptor
-     						close(socketsPoll[i].fd);
-     						//set fd -1
-          					socketsPoll[i].fd = -1;
-          					compress_list = TRUE;
-							int j;
-							if (compress_list){
-    							compress_list = FALSE;
-    							for (i = 0; i < numFDs; i++){
-    								if (socketsPoll[i].fd == -1){
-    		    						for(j = i; j < numFDs; j++){
-    		        						socketsPoll[j].fd = socketsPoll[j+1].fd;
-    		      						}
-    		    						numFDs--;
-    		    					}
-    							}
-    						}
-     					}	
+     				}else{
+						/* não é o listening....então deve ser outro...
+							etapa 4, o outro agora pode ser o stdin */
+						if(socketsPoll[i].fd == stdin_fd){
+/*
+							char *buffer;
+							char *print = "print";
+							fgets(buffer, 10, socketsPoll[i].fd);
+							// read word "print" return 0 if equals
+							int equals = strcmp(print, buffer);
+							printf("string = %s , equals = %d\n", buffer , equals);
+							if(equals == 0){
+								printf("***********************\n");
+							}	*/
+
+
+							char buffer;
+							char *print = "print";
+							gets(&buffer);
+							// read word "print" return 0 if equals
+							int equals = strcmp(print, &buffer);
+							printf("string = %s , equals = %d\n", &buffer , equals);
+							if(equals == 0){
+								printf("***********************\n");
+							}	
+							
+						
+						}else{
+		 					close_conn = FALSE;
+		 					client_on = TRUE;
+		 					printf("cliente fez pedido\n");
+		 					//while(client_on){
+		 						//receive data
+		 					int result = network_receive_send(socketsPoll[i].fd);
+		 					if(result < 0){ 
+		 						//ou mal recebida ou o cliente desconectou
+		 						// -> close connection
+		 						printf("cliente desconectou\n");
+		 						 //fecha o fileDescriptor
+		 						close(socketsPoll[i].fd);
+		 						//set fd -1
+		      					socketsPoll[i].fd = -1;
+		      					compress_list = TRUE;
+								int j;
+								if (compress_list){
+									compress_list = FALSE;
+									for (i = 0; i < numFDs; i++){
+										if (socketsPoll[i].fd == -1){
+				    						for(j = i; j < numFDs; j++){
+				        						socketsPoll[j].fd = socketsPoll[j+1].fd;
+				      						}
+				    						numFDs--;
+				    					}
+									}
+								}
+		 					}	
+						}//Fim do else de outros fd's
+
 	   				}//fim da ligacao cliente-servidor
      			}//fim do else
 			}//fim do for numFDs

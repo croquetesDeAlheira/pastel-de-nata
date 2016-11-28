@@ -13,6 +13,10 @@
 #define ERROR -1
 #define OK 0
 
+// Definindo os booleanos
+#define true 1
+#define false 0
+
 // Definindo os tipos de comandos
 #define BADKEY -1
 #define PUT 1
