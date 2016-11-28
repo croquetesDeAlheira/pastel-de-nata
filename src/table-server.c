@@ -28,7 +28,7 @@
 #define OK 0
 #define TRUE 1 // boolean true
 #define FALSE 0 // boolean false
-#define NCLIENTS 4 // Número de sockets (uma para listening)
+#define NCLIENTS 10 // Número de sockets (uma para listening e uma para o stdin)
 #define TIMEOUT -1 // em milisegundos
 
 //variaveis globais
@@ -327,7 +327,24 @@ int main(int argc, char **argv){
 							int equals = strcmp(print, &buffer);
 							printf("string = %s , equals = %d\n", &buffer , equals);
 							if(equals == 0){
-								printf("***********************\n");
+								char *primario = "eu sou primario :D";	
+								struct message_t *msg_resposta;							
+								struct message_t *msg_pedido = (struct message_t *)
+										malloc(sizeof(struct message_t));
+								if(msg_pedido == NULL){
+									perror("Problema na criação da mensagem de pedido\n");
+								}
+								// codes
+								msg_pedido->opcode = OC_GET;
+								msg_pedido->c_type = CT_KEY;
+								// Skel vai verificar se content.key == !
+								msg_pedido->content.key = "!";
+								msg_resposta = invoke(msg_pedido);
+								
+								printf("***************************************\n");
+								printf("servidor = %s\n\n", primario);
+								printf("all keys = %s\n", *(msg_resposta->content.keys));
+								
 							}	
 							
 						
