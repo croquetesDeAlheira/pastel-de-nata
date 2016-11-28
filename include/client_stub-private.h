@@ -9,8 +9,9 @@
  */
 struct rtable_t{
 	struct server_t *server;
-	char *primario;
-  	char *secundario;
+	char *ip_addr1;
+  char *ip_addr2;
+  int primario;
 };
 
 /*

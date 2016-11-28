@@ -91,8 +91,8 @@ int rtable_unbind(struct rtable_t *rtable){
 	if(network_close(rtable->server) < 0){
 		perror("Problema ao terminar a associação entre cliente e tabela remota\n");
 		// Liberta a memoria
-		free(rtable->primario);
-		free(rtable->secundario);
+		free(rtable->ip_addr1);
+		free(rtable->ip_addr2);
 		free(rtable);
 
 		return ERROR;
@@ -329,12 +329,61 @@ struct rtable_t *main_bind_rtable(const char *server1, const char *server2) {
 	
 	rtable = rtable_bind(server1);
 	// Verifica criação
-	if (rtable == NULL) {return NULL;}
-	// Aloca endereços de servidores a tabela remota
-	// primario e secundario
-	//n~ao precisa verificar se null, ja foi feito no inicio
-	rtable->primario = strdup(server1);
-	rtable->secundario = strdup(server2);
+	if (rtable == NULL) {
+		// Server1 indisponivel
+		// Aguarda e tenta de novo
+		printf("Tabela indisponivel... Tentar novamente\n");
+		sleep(RETRY_TIME);
+		rtable = rtable_bind(server1);
+
+		if (rtable == NULL) {
+			// Server1 indisponivel
+			// Tenta server2
+			rtable = rtable_bind(server2);
+			if (rtable == NULL) {
+				// Server 2 indisponivel
+				// Aguarda e tenta de novo
+				printf("Tabela indisponivel...Tentar novamente\n");
+				sleep(RETRY_TIME);
+				rtable = rtable_bind(server2);
+				if (rtable == NULL) {
+					// Impossivel de fazer bind
+					// A qualquer um dos servidores
+					// Não precisa de print que o table_client
+					// Ao receber NULL envia mensagem de erro
+					return NULL;
+
+				} else {
+					// Fez bind ao server 2
+					rtable->ip_addr1 = strdup(server1);
+					rtable->ip_addr2 = strdup(server2);
+					rtable->primario = IP_ADDR_2;
+				}
+
+			} else {
+				// Fez bind ao server2
+				rtable->ip_addr1 = strdup(server1);
+				rtable->ip_addr2 = strdup(server2);
+				rtable->primario = IP_ADDR_2;
+
+			}			
+
+		} else {
+			// Fez bind ao server1
+			rtable->ip_addr1 = strdup(server1);
+			rtable->ip_addr2 = strdup(server2);
+			rtable->primario = IP_ADDR_1;
+		}
+
+		
+	} else {
+		// Fez bind ao server1
+		rtable->ip_addr1 = strdup(server1);
+		rtable->ip_addr2 = strdup(server2);
+		rtable->primario = IP_ADDR_1;
+	}
+	
+	// Retorna rtable
 	return rtable;
 }
 

@@ -40,4 +40,9 @@
 #define KEY_ALREADY_EXIST 30
 #define UPDATE_KEY_NOT_EXIST 31
 
+// Códigos para definir que ip:porto 
+// é o primário e o secundário
+#define IP_ADDR_1 51
+#define IP_ADDR_2 52
+
 #endif
