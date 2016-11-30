@@ -33,15 +33,15 @@
 
 //variaveis globais
 int i;
-int numFDs = 2;
-struct pollfd socketsPoll[NCLIENTS];
+int numFDsPrimary = 2;
+struct pollfd socketsPollPrimary[NCLIENTS];
 
 
 void finishServer(int signal){
     //close dos sockets
-    for (i = 0; i < numFDs; i++){
-    	if(socketsPoll[i].fd >= 0){
-     		close(socketsPoll[i].fd);
+    for (i = 0; i < numFDsPrimary; i++){
+    	if(socketsPollPrimary[i].fd >= 0){
+     		close(socketsPollPrimary[i].fd);
      	}
  	}
 	table_skel_destroy();
@@ -229,13 +229,46 @@ int main(int argc, char **argv){
 	// caso seja pressionado o ctrl+c
 	 signal(SIGINT, finishServer);
 	
-	// Nota: 3 argumentos. O nome do programa conta!
+	/*// Nota: 3 argumentos. O nome do programa conta!
 	if (argc != 3){
 		printf("Uso: ./server <porta TCP> <dimensão da tabela>\n");
 		printf("Exemplo de uso: ./table-server 54321 10\n");
 		return ERROR;
-	}
+	}*/
+	/* o numero de argumentos eh diferente entre secundario e primario 
+		primario = programa + seuPorto + ipSecundario + portoSecundario + listSize
+		secundario = programa + seuPorto + listSize*/
+	if(argc == 5){
+		//primario
+	}else if(argc == 3){
+		//secundario
+	}else{
+		//errou
+		printf("\nUso do primario: ./server <porta TCP> <IP secundario> <porta TCP secundario> <dimensão da tabela>\n");
+		printf("	Exemplo de uso: ./table-server 54321 127.0.0.1 54322 10\n");
+		printf("Uso do secundario: ./server <porta TCP> <dimensão da tabela>\n");
+		printf("	Exemplo de uso: ./table-server 54321 10\n\n");
+		return ERROR;
+	}	
+	subRoutinePrimary(argc, argv);
 
+}//fim main
+
+int subRoutinePrimary(int argc, char **argv){
+	//remover nao usados depois...
+	int listening_socket;
+	int stdin_fd;
+	int connsock;
+	int result;
+	int client_on = TRUE;
+	int server_on = TRUE;
+	struct sockaddr_in client;
+	socklen_t size_client;
+	int checkPoll;
+	
+	int activeFDs = 0;
+	int close_conn;
+	int compress_list;
 	//Codigo de acordo com as normas da IBM
 	/*make a reusable listening socket*/
 	listening_socket = make_server_socket(atoi(argv[1]));
@@ -248,26 +281,22 @@ int main(int argc, char **argv){
 		close(listening_socket); 
 		return ERROR;
 	}
-
-
-
 	//inicializa todos os clientes com 0
-	memset(socketsPoll, 0 , sizeof(socketsPoll));
+	memset(socketsPollPrimary, 0 , sizeof(socketsPollPrimary));
 	//o primeiro elem deve ser o listening
-	socketsPoll[0].fd = listening_socket;
-	socketsPoll[0].events = POLLIN;
+	socketsPollPrimary[0].fd = listening_socket;
+	socketsPollPrimary[0].events = POLLIN;
 
 	//o segundo elem deve ser o stdin (para capturar o "print")
 	stdin_fd = STDIN_FILENO;
-	socketsPoll[1].fd = stdin_fd;
-	socketsPoll[1].events = POLLIN;
-
+	socketsPollPrimary[1].fd = stdin_fd;
+	socketsPollPrimary[1].events = POLLIN;
 	/* ciclo para receber os clients conectados */
 
 	printf("a espera de clientes...\n");
 	//call poll and check
 	while(server_on){ //while no cntrl c
-		while((checkPoll = poll(socketsPoll, numFDs, TIMEOUT)) >= 0){
+		while((checkPoll = poll(socketsPollPrimary, numFDsPrimary, TIMEOUT)) >= 0){
 
 			//verifica se nao houve evento em nenhum socket
 			if(checkPoll == 0){
@@ -276,19 +305,19 @@ int main(int argc, char **argv){
 			}else {
 
 				/* então existe pelo menos 1 poll active, QUAL???? loops ;) */
-				for(i = 0; i < numFDs; i++){
+				for(i = 0; i < numFDsPrimary; i++){
 					//procura...0 nao houve return events
-					if(socketsPoll[i].revents == 0){continue;}
+					if(socketsPollPrimary[i].revents == 0){continue;}
 
 					//se houve temos de ver se foi POLLIN
-					if(socketsPoll[i].revents != POLLIN){
-     					printf("  Error! revents = %d\n", socketsPoll[i].revents);
+					if(socketsPollPrimary[i].revents != POLLIN){
+     					printf("  Error! revents = %d\n", socketsPollPrimary[i].revents);
        					break;
      				}
 
 
      				//se for POLLIN pode ser no listening_socket ou noutro qualquer...
-     				if(socketsPoll[i].fd == listening_socket){
+     				if(socketsPollPrimary[i].fd == listening_socket){
      					//quer dizer que temos de aceitar todas as ligações com a nossa socket listening
 						size_client = sizeof(struct sockaddr_in);
      					connsock = accept(listening_socket, (struct sockaddr *) &client, &size_client);
@@ -298,28 +327,19 @@ int main(int argc, char **argv){
            			 		}
            			 		break;
           				}
-          				socketsPoll[numFDs].fd = connsock;
-          				socketsPoll[numFDs].events = POLLIN;
-          				numFDs++;
+          				socketsPollPrimary[numFDsPrimary].fd = connsock;
+          				socketsPollPrimary[numFDsPrimary].events = POLLIN;
+          				numFDsPrimary++;
 						printf("cliente conectado\n");
      			
      					//fim do if do listening
      				}else{
 						/* não é o listening....então deve ser outro...
 							etapa 4, o outro agora pode ser o stdin */
-						if(socketsPoll[i].fd == stdin_fd){
-/*
-							char *buffer;
-							char *print = "print";
-							fgets(buffer, 10, socketsPoll[i].fd);
-							// read word "print" return 0 if equals
-							int equals = strcmp(print, buffer);
-							printf("string = %s , equals = %d\n", buffer , equals);
-							if(equals == 0){
-								printf("***********************\n");
-							}	*/
-
-
+						if(socketsPollPrimary[i].fd == stdin_fd){
+							/*
+							fgets(buffer, 10, socketsPollPrimary[i].fd);
+							*/
 							char buffer;
 							char *print = "print";
 							gets(&buffer);
@@ -340,11 +360,21 @@ int main(int argc, char **argv){
 								// Skel vai verificar se content.key == !
 								msg_pedido->content.key = "!";
 								msg_resposta = invoke(msg_pedido);
-								
-								printf("***************************************\n");
-								printf("servidor = %s\n\n", primario);
-								printf("all keys = %s\n", *(msg_resposta->content.keys));
-								
+								if(msg_resposta == NULL){
+									perror("Problema na mensagem de resposta\n");
+								}								
+								printf("********************************\n");
+								printf("* servidor = %s\n*\n", primario);
+									if(msg_resposta->content.keys[0] != NULL){ 
+										int i = 0;
+										while(msg_resposta->content.keys[i] != NULL){
+											printf("* key[%d]: %s\n", i, msg_resposta->content.keys[i]);
+											i++;
+										}
+									}else{
+										printf("* tabela vazia\n");
+									}
+								printf("*\n********************************\n");						
 							}	
 							
 						
@@ -354,25 +384,25 @@ int main(int argc, char **argv){
 		 					printf("cliente fez pedido\n");
 		 					//while(client_on){
 		 						//receive data
-		 					int result = network_receive_send(socketsPoll[i].fd);
+		 					int result = network_receive_send(socketsPollPrimary[i].fd);
 		 					if(result < 0){ 
 		 						//ou mal recebida ou o cliente desconectou
 		 						// -> close connection
 		 						printf("cliente desconectou\n");
 		 						 //fecha o fileDescriptor
-		 						close(socketsPoll[i].fd);
+		 						close(socketsPollPrimary[i].fd);
 		 						//set fd -1
-		      					socketsPoll[i].fd = -1;
+		      					socketsPollPrimary[i].fd = -1;
 		      					compress_list = TRUE;
 								int j;
 								if (compress_list){
 									compress_list = FALSE;
-									for (i = 0; i < numFDs; i++){
-										if (socketsPoll[i].fd == -1){
-				    						for(j = i; j < numFDs; j++){
-				        						socketsPoll[j].fd = socketsPoll[j+1].fd;
+									for (i = 0; i < numFDsPrimary; i++){
+										if (socketsPollPrimary[i].fd == -1){
+				    						for(j = i; j < numFDsPrimary; j++){
+				        						socketsPollPrimary[j].fd = socketsPollPrimary[j+1].fd;
 				      						}
-				    						numFDs--;
+				    						numFDsPrimary--;
 				    					}
 									}
 								}
@@ -381,13 +411,13 @@ int main(int argc, char **argv){
 
 	   				}//fim da ligacao cliente-servidor
      			}//fim do else
-			}//fim do for numFDs
+			}//fim do for numFDsPrimary
 		}
 			//se a lista tiver fragmentada, devemos comprimir 
 	}//fim do for polls
-
-
-
-
+	return OK;
+}
+int subRoutineSecondary(){
+	return 0;
 }
 

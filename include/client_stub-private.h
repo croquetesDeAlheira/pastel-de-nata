@@ -10,8 +10,8 @@
 struct rtable_t{
 	struct server_t *server;
 	char *ip_addr1;
-  char *ip_addr2;
-  int primario;
+  	char *ip_addr2;
+  	int primario;
 };
 
 /*

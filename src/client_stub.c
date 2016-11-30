@@ -36,7 +36,7 @@ struct message_t *network_with_retry(struct rtable_t *table, struct message_t *m
 			perror("Problema ao terminar a associação entre cliente e tabela remota\n");
 		}
 		// Nova ligação
-		table->server = network_connect(table->primario);
+		table->server = network_connect(table->ip_addr1);
 		if(table->server == NULL){
 			perror("Problema na conecção\n");
 			return NULL;
@@ -99,8 +99,8 @@ int rtable_unbind(struct rtable_t *rtable){
 	}
 	// Memoria da estrutura server_t ja libertada ao fazer network_close
 	// Libertar o resto da rtable
-	free(rtable->primario);
-	free(rtable->secundario);
+	//free(rtable->primario);
+	//free(rtable->secundario);
 	free(rtable);
 	return OK;
 }
