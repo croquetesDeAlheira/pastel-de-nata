@@ -11,6 +11,13 @@
 #define OC_GET_R	41
 #define OC_PUT_R	51
 
+
+
+// Códigos da mensagem entre servidores
+#define OC_DEL_S	22
+#define OC_UPDATE_S   	33
+#define OC_PUT_S	55
+
 //#include "table-private.h" /* For table_free_keys() */
 #include "message.h"
 #include "data.h"
