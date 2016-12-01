@@ -36,6 +36,7 @@ struct message_t *network_with_retry(struct rtable_t *table, struct message_t *m
 			perror("Problema ao terminar a associação entre cliente e tabela remota\n");
 		}
 		// Nova ligação
+		/*// Tentar conectar novamente ao primário
 		table->server = network_connect(table->ip_addr1);
 		if(table->server == NULL){
 			perror("Problema na conecção\n");
@@ -48,8 +49,123 @@ struct message_t *network_with_retry(struct rtable_t *table, struct message_t *m
 			// Deverá ser aqui que contacta o servidor secundario
 			perror("sem resposta do servidor\n");
 		}
+		// Fim do código de conectar ao primário*/
+		
+		// Conectar ao primário
+		if(table->primario == IP_ADDR_1){	
+			table->server = network_connect(table->ip_addr1);
+			if(table->server != NULL){
+				// Segunda tentativa a contactar o servidor primário
+				// Se falhar fazer bind ao secundário
+				// e alterar quem é o primário e secundário
+				msg_resposta = network_send_receive(table->server, msg_pedido);
+				if(msg_resposta == NULL){
+					perror("Sem resposta do servidor primário\n");
+					printf("Estabelecer conexão ao secundário\n");
+					// Alterar idenficador de quem é o primário 1 -> 2
+					table->primario = IP_ADDR_2;
+					// Conectar ao secundário se falhar esperar e conectar outra vez
+					// Se correr bem enviar msg
+					table->server = network_connect(table->ip_addr2);
+					if(table->server != NULL){
+						printf("Conexão estabecida com secundário\n");
+						// Enviar mensagem ao servidor se falhar tentar outra vez
+						msg_resposta = network_send_receive(table->server, msg_pedido);
+						if(msg_resposta == NULL){
+							sleep(RETRY_TIME);
+							// Última tentativa
+							msg_resposta = network_send_receive(table->server, msg_pedido);
+							if(msg_resposta == NULL){
+								perror("Problema a conectar ao servidor\n");
+								printf("Não existem servidores disponíveis\n");
+								return NULL;
+							}
+						}
+					}else{
+						sleep(RETRY_TIME);
+						table->server = network_connect(table->ip_addr2);
+						if(table->server == NULL){
+							perror("Problema a conectar ao secundário\n");
+							printf("Não existem servidores disponíveis\n");
+							return NULL;	
+						}else{
+							printf("Conexão estabecida com secundário\n");
+							// Enviar mensagem ao servidor se falhar tentar outra vez
+							msg_resposta = network_send_receive(table->server, msg_pedido);
+							if(msg_resposta == NULL){
+								sleep(RETRY_TIME);
+								// Última tentativa
+								msg_resposta = network_send_receive(table->server, msg_pedido);
+								if(msg_resposta == NULL){
+									perror("Problema a conectar ao servidor\n");
+									printf("Não existem servidores disponíveis\n");
+									return NULL;
+								}
+							}						
+							
+						}
+					}			
+				}	
+			}
+		// Primário é o IP_ADDR_2
+		}else if(table->primario == IP_ADDR_2){
+			table->server = network_connect(table->ip_addr2);
+			if(table->server != NULL){
+				// Segunda tentativa a contactar o servidor primário
+				// Se falhar fazer bind ao secundário
+				// e alterar quem é o primário e secundário
+				msg_resposta = network_send_receive(table->server, msg_pedido);
+				if(msg_resposta == NULL){
+					perror("Sem resposta do servidor primário\n");
+					printf("Estabelecer conexão ao secundário\n");
+					// Alterar idenficador de quem é o primário 2 -> 1
+					table->primario = IP_ADDR_1;
+					// Conectar ao secundário se falhar esperar e conectar outra vez
+					// Se correr bem enviar msg
+					table->server = network_connect(table->ip_addr1);
+					if(table->server != NULL){
+						printf("Conexão estabecida com secundário\n");
+						// Enviar mensagem ao servidor se falhar tentar outra vez
+						msg_resposta = network_send_receive(table->server, msg_pedido);
+						if(msg_resposta == NULL){
+							sleep(RETRY_TIME);
+							// Última tentativa
+							msg_resposta = network_send_receive(table->server, msg_pedido);
+							if(msg_resposta == NULL){
+								perror("Problema a conectar ao servidor\n");
+								printf("Não existem servidores disponíveis\n");
+								return NULL;
+							}
+						}
+					}else{
+						sleep(RETRY_TIME);
+						table->server = network_connect(table->ip_addr1);
+						if(table->server == NULL){
+							perror("Problema a conectar ao secundário\n");
+							printf("Não existem servidores disponíveis\n");
+							return NULL;	
+						}else{
+							printf("Conexão estabecida com secundário\n");
+							// Enviar mensagem ao servidor se falhar tentar outra vez
+							msg_resposta = network_send_receive(table->server, msg_pedido);
+							if(msg_resposta == NULL){
+								sleep(RETRY_TIME);
+								// Última tentativa
+								msg_resposta = network_send_receive(table->server, msg_pedido);
+								if(msg_resposta == NULL){
+									perror("Problema a conectar ao servidor\n");
+									printf("Não existem servidores disponíveis\n");
+									return NULL;
+								}
+							}						
+						
+						}
+					}			
+				}
+			}
+		
+		}// Verificar quem é o primário
 	}
-
 	//retorna resposta seja null ou nao
 	return msg_resposta;
 
