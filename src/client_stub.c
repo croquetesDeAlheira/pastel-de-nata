@@ -316,6 +316,7 @@ void rtable_free_keys(char **keys){
 /*
 Função que inicializa uma tabela remota
 e aloca os endereços dos servidores
+indentificando que servidor é o principal
 */
 struct rtable_t *main_bind_rtable(const char *server1, const char *server2) {
 	if(server1 == NULL || server2 == NULL){
@@ -355,35 +356,28 @@ struct rtable_t *main_bind_rtable(const char *server1, const char *server2) {
 
 				} else {
 					// Fez bind ao server 2
-					rtable->ip_addr1 = strdup(server1);
-					rtable->ip_addr2 = strdup(server2);
 					rtable->primario = IP_ADDR_2;
 				}
 
 			} else {
 				// Fez bind ao server2
-				rtable->ip_addr1 = strdup(server1);
-				rtable->ip_addr2 = strdup(server2);
 				rtable->primario = IP_ADDR_2;
-
 			}			
 
 		} else {
 			// Fez bind ao server1
-			rtable->ip_addr1 = strdup(server1);
-			rtable->ip_addr2 = strdup(server2);
 			rtable->primario = IP_ADDR_1;
 		}
 
 		
 	} else {
 		// Fez bind ao server1
-		rtable->ip_addr1 = strdup(server1);
-		rtable->ip_addr2 = strdup(server2);
 		rtable->primario = IP_ADDR_1;
 	}
 	
 	// Retorna rtable
+	rtable->ip_addr1 = strdup(server1);
+	rtable->ip_addr2 = strdup(server2);
 	return rtable;
 }
 

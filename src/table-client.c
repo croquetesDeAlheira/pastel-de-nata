@@ -215,7 +215,7 @@ int main(int argc, char **argv){
 	}
 
 	/*
-	Esta função faz o devolve uma rtable_t*
+	Esta função devolve uma rtable_t*
 	Chama o rtable_bind e aloca na tabela remota 
 	os endereços dos servidores
 	*/
