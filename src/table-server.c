@@ -26,6 +26,7 @@
 
 #define ERROR -1
 #define OK 0
+#define CHANGE_ROUTINE 1
 #define TRUE 1 // boolean true
 #define FALSE 0 // boolean false
 #define NCLIENTS 10 // Número de sockets (uma para listening e uma para o stdin)
@@ -35,8 +36,8 @@
 int i;
 int numFds = 2; //numero de fileDescriptors
 struct pollfd socketsPoll[NCLIENTS]; // o array de fds
-int isPrimary; // booleano a representar se primario estar ligado
-int isSecondary; // booleano a representar se secundario estar ligado
+int isPrimary; // booleano a representar se eu sou primario
+int isSecondaryOn; // booleano a representar se secundario estar ligado
 int listening_socket; // listening socket
 int stdin_fd; // socket do stdin (keyboard input - stdin)
 int connsock; // sockets conectada
@@ -153,6 +154,7 @@ int network_receive_send(int sockfd){
 	int msg_length;
 	int message_size, msg_size, result;
 	struct message_t *msg_pedido, *msg_resposta;
+	int changeRoutine = FALSE;
 
 	/* Com a função read_all, receber num inteiro o tamanho da 
 	   mensagem de pedido que será recebida de seguida.*/
@@ -199,7 +201,7 @@ int network_receive_send(int sockfd){
 
 
 			printf("siga mudar rotina \n");
-			return 1;		
+			changeRoutine = TRUE;
 		}//se nao mudou, simplesmente continua...
 	}
 	/* Processar a mensagem */
@@ -259,14 +261,20 @@ int network_receive_send(int sockfd){
 	free(message_pedido);
 	free(msg_resposta);
 	free(msg_pedido);
-	return OK;
+	if(changeRoutine){
+
+		printf("send resposta\n");
+		return CHANGE_ROUTINE;
+	}else{
+		return OK;
+	}
 }
 
 int subRoutinePrimary(){
 	//Codigo de acordo com as normas da IBM
 	/*make a reusable listening socket*/
 	/* ciclo para receber os clients conectados */
-	printf("a espera de clientes...\n");
+	printf("a espera de clientes - primario...\n");
 	//call poll and check
 	while(server_on){ //while no cntrl c
 		while((checkPoll = poll(socketsPoll, numFds, TIMEOUT)) >= 0){
@@ -392,7 +400,7 @@ int subRoutineSecondary(){
 	//Codigo de acordo com as normas da IBM
 	/*make a reusable listening socket*/
 	/* ciclo para receber os clients conectados */
-	printf("a espera de clientes...\n");
+	printf("a espera de clientes secundario...\n");
 	//call poll and check
 	while(server_on){ //while no cntrl c
 		while((checkPoll = poll(socketsPoll, numFds, TIMEOUT)) >= 0){
@@ -430,7 +438,8 @@ int subRoutineSecondary(){
           				close_conn = FALSE;
           				int primary_server_on = TRUE;
           				int result = network_receive_send(connsock);
-          				if(result == 1){
+          				if(result == CHANGE_ROUTINE){
+          					isPrimary = TRUE;
           					subRoutinePrimary();
           				}
 
@@ -552,14 +561,14 @@ int main(int argc, char **argv){
 	/* o numero de argumentos eh diferente entre secundario e primario 
 		primario = programa + seuPorto + ipSecundario + portoSecundario + listSize
 		secundario = programa + seuPorto + listSize*/
-	if(argc == 5){
-		//primario
+	if(argc == 2){
+		//primario deve ser 5 depois
 		isPrimary = TRUE;
 
-		char *myPort = argv[1];
-		char *secIP = argv[2];
-		char *secPort = argv[3];
-		char *listSize = argv[4];
+		char *myPort = /*argv[1]*/ "44901";
+		char *secIP = /*argv[2]*/ "127.0.0.1";
+		char *secPort = /*argv[3]*/ "44902";
+		char *listSize = /*argv[4]*/ "10";
 
 		//inicializa servidor
 		result = serverInit(myPort, listSize);
@@ -567,12 +576,12 @@ int main(int argc, char **argv){
 
 		subRoutinePrimary();
 
-	}else if(argc == 3){
+	}else if(argc == 1){
 		//secundario
 		isPrimary = FALSE;
 
-		char *myPort = argv[1];
-		char *listSize = argv[2];
+		char *myPort = /*argv[1]*/ "44902";
+		char *listSize = /*argv[2]*/ "10";
 
 		//inicializa servidor
 		result = serverInit(myPort, listSize);
