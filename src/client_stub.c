@@ -28,7 +28,7 @@ char *get_prim(struct rtable_t *table){
 /**
 * Atualiza o atributo de primario para o novo server primario
 */
-int switch_pserver(struct rtable_t *table){
+void switch_pserver(struct rtable_t *table){
 	if(table->primario == IP_ADDR_1)
 		table->primario = IP_ADDR_2;
 	else
@@ -37,10 +37,13 @@ int switch_pserver(struct rtable_t *table){
 
 struct message_t *network_reconnect(struct rtable_t *table, struct message_t *msg_pedido, struct message_t *msg_resposta){
 	
-	printf("primário %i\n", table->primario);
-	printf("ip1 %s\n", table->ip_addr1);
-	printf("ip2 %s\n", table->ip_addr2);	
 	table->server = network_connect(get_prim(table));
+	printf("antes do if\n");
+	if(table->server != NULL)
+		printf("server not null\n");
+	else
+		printf("server null\n");
+		
 	if(table->server != NULL){
 		// Segunda tentativa a contactar o servidor primário
 		// Se falhar fazer bind ao secundário
@@ -50,9 +53,9 @@ struct message_t *network_reconnect(struct rtable_t *table, struct message_t *ms
 			perror("Sem resposta do servidor primário\n");
 			printf("Estabelecer conexão ao secundário\n");					
 			// Alterar idenficador de quem é o primário 1 -> 2
-			table->primario = switch_pserver(table);
+			switch_pserver(table);
 			// Fecha a ligação
-			if(network_close(table->server) < 0){
+			/*if(network_close(table->server) < 0){
 				perror("Problema ao terminar a associação entre cliente e tabela remota\n");
 			}
 			// Fazer bind ao servidor secundário
@@ -62,12 +65,9 @@ struct message_t *network_reconnect(struct rtable_t *table, struct message_t *ms
 				sleep(RETRY_TIME);
 				// Se 2º bind falhar parar
 				// Fecha a ligação
-				if(network_close(table->server) < 0){
-					perror("Problema ao terminar a associação entre cliente e tabela remota\n");
-				}
 				table = rtable_bind(get_prim(table));
 				if(table == NULL){return NULL;}
-			}
+			}*/
 			// Conectar ao secundário se falhar esperar e conectar outra vez
 			// Se correr bem enviar msg					
 			table->server = network_connect(get_prim(table));
@@ -112,22 +112,23 @@ struct message_t *network_reconnect(struct rtable_t *table, struct message_t *ms
 		}	
 	}else{ // table->server == NULL
 		perror("Sem resposta do servidor primário\n");
-		printf("Estabelecer conexão ao secundário\n");
-		//sleep(RETRY_TIME);
-		if(network_close(table->server) < 0){
-			perror("Problema ao terminar a associação entre cliente e tabela remota\n");
-		}					
+		printf("Estabelecer conexão ao secundário\n");				
 		// Alterar idenficador de quem é o primário 1 -> 2
-		table->primario = switch_pserver(table);
+		printf("table->primario %i\n", table->primario);
+		printf("table->primario %s\n", get_prim(table));
+		switch_pserver(table);
+		printf("table->primario %i\n", table->primario);
+		printf("table->primario %s\n", get_prim(table));
 		// Fazer bind ao servidor secundário
 		// Se bind falhar, tentar novamente
-		printf("ip_addr2 %s\n", table->ip_addr2);
 		// Fecha a ligação
-		if(network_close(table->server) < 0){
-			perror("Problema ao terminar a associação entre cliente e tabela remota\n");
-		}
-		table = rtable_bind(get_prim(table));
+		//if(network_close(table->server) < 0){
+		//	perror("Problema ao terminar a associação entre cliente e tabela remota\n");
+		//}
+		/*table = rtable_bind(get_prim(table));
+		//if(table != NULL){printf("após bind\n");}
 		if(table == NULL){
+			printf("table == null\n");
 			sleep(RETRY_TIME);
 			// Se 2º bind falhar parar
 			// Fecha a ligação
@@ -136,16 +137,17 @@ struct message_t *network_reconnect(struct rtable_t *table, struct message_t *ms
 			}		
 			table = rtable_bind(get_prim(table));
 			if(table == NULL){return NULL;}
-		}
+		}*/
+		printf("primario %s\n", get_prim(table));
 		printf("fez bind ao 2\n");
 		// Conectar ao secundário se falhar esperar e conectar outra vez
-		// Se correr bem enviar msg					
+		// Se correr bem enviar msg			
 		table->server = network_connect(get_prim(table));
 		printf("connect com o 2\n");
 		if(table->server != NULL){
 			printf("server not null\n");
 			printf("Conexão estabecida com secundário\n");
-			// Enviar mensagem ao servidor se falhar tentar outra vez
+			// Enviar mensagem ao servidor se falhar tentar outra vez*/
 			msg_resposta = network_send_receive(table->server, msg_pedido);
 			if(msg_resposta == NULL){
 				sleep(RETRY_TIME);
