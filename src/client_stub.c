@@ -69,7 +69,9 @@ struct message_t *network_reconnect(struct rtable_t *table, struct message_t *ms
 				if(table == NULL){return NULL;}
 			}*/
 			// Conectar ao secundário se falhar esperar e conectar outra vez
-			// Se correr bem enviar msg					
+			// Se correr bem enviar msg
+			// Fecha conexão antiga
+			network_close(table->server);				
 			table->server = network_connect(get_prim(table));
 			if(table->server != NULL){
 				printf("Conexão estabecida com secundário\n");
@@ -87,6 +89,8 @@ struct message_t *network_reconnect(struct rtable_t *table, struct message_t *ms
 				}
 			}else{
 				sleep(RETRY_TIME);
+				// Fecha ligação antiga
+				network_close(table->server);
 				table->server = network_connect(get_prim(table));
 				if(table->server == NULL){
 					perror("Problema a conectar ao secundário\n");
@@ -162,6 +166,8 @@ struct message_t *network_reconnect(struct rtable_t *table, struct message_t *ms
 		}else{
 			printf("server null\n");
 			sleep(RETRY_TIME);
+			// Fecha ligacão anterior
+			network_close(table->server);
 			table->server = network_connect(get_prim(table));
 			if(table->server == NULL){
 				perror("Problema a conectar ao secundário\n");
@@ -197,7 +203,7 @@ struct message_t *network_with_retry(struct rtable_t *table, struct message_t *m
 	msg_resposta = network_send_receive(table->server, msg_pedido);
 
 	if(msg_resposta == NULL){
-		// Não consegu contactar
+		// Não conseguiu contactar
 		// Aguarda um tempo e tenta de novo
 		perror("Problema com a mensagem de resposta, tentar novamente..\n");
 		sleep(RETRY_TIME);
