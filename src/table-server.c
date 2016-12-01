@@ -17,6 +17,7 @@
 #include <sys/socket.h>
 #include <signal.h>
 #include <stdio.h>
+#include <pthread.h>
 
 
 #include "../include/inet.h"
@@ -32,6 +33,9 @@
 #define NCLIENTS 10 // Número de sockets (uma para listening e uma para o stdin)
 #define TIMEOUT -1 // em milisegundos
 
+
+//declarações
+void *threaded_send_receive(void *threadID);
 //variaveis globais
 int i;
 int numFds = 2; //numero de fileDescriptors
@@ -51,6 +55,8 @@ int checkPoll; // check do poll , verificar se houve algo no poll
 int activeFDs = 0; //num de fds activos
 int close_conn; 
 int compress_list; //booleano representa se deve fazer compress da de socketsPoll
+
+pthread_mutex_t mutex;
 
 
 void finishServer(int signal){
@@ -230,7 +236,9 @@ int network_receive_send(int sockfd){
 		//caso tenha mudado, enviar para o secundario
 		if(opcode != msg_pedido->opcode){
 			//enviar
+			pthread_mutex_unlock(&mutex);
 			printf("enviar para o secundario\n");
+			pthread_mutex_lock(&mutex);
 			/*
 				ENVIAR PARA O SECUNDARIO AQUI
 				DEVE SER FEITO ATRAVES DE UMA THREAD
@@ -274,7 +282,29 @@ int subRoutinePrimary(){
 	//Codigo de acordo com as normas da IBM
 	/*make a reusable listening socket*/
 	/* ciclo para receber os clients conectados */
-	printf("a espera de clientes - primario...\n");
+	if(isPrimary){
+		printf("a espera de clientes - primario...\n");
+
+		//inicializar mutex
+		if (pthread_mutex_init(&mutex, NULL) != 0){
+		    printf("\n mutex init failed\n");
+			exit(ERROR);
+		}
+		//o primario ganha poder do mutex
+		pthread_mutex_lock(&mutex);
+		pthread_t thread;
+		long id = 1234;
+		int threadCreated = pthread_create(&thread, NULL, threaded_send_receive, (void *)id);
+		if (threadCreated){
+          printf("ERROR; return code from pthread_create() is %d\n", threadCreated);
+          exit(ERROR);
+      	}
+		
+
+      	
+	}else{
+		printf("a espera de clientes secundario...\n");
+	}
 	//call poll and check
 	while(server_on){ //while no cntrl c
 		while((checkPoll = poll(socketsPoll, numFds, TIMEOUT)) >= 0){
@@ -385,7 +415,11 @@ int subRoutinePrimary(){
 				    					}
 									}
 								}
-		 					}	
+		 					}else if(result == CHANGE_ROUTINE){
+		 						isPrimary = TRUE;
+		 						subRoutinePrimary();
+		 					}
+
 						}//Fim do else de outros fd's
 
 	   				}//fim da ligacao cliente-servidor
@@ -396,141 +430,16 @@ int subRoutinePrimary(){
 	}//fim do for polls
 	return OK;
 }
-int subRoutineSecondary(){
-	//Codigo de acordo com as normas da IBM
-	/*make a reusable listening socket*/
-	/* ciclo para receber os clients conectados */
-	printf("a espera de clientes secundario...\n");
-	//call poll and check
-	while(server_on){ //while no cntrl c
-		while((checkPoll = poll(socketsPoll, numFds, TIMEOUT)) >= 0){
-			//verifica se nao houve evento em nenhum socket
-			if(checkPoll == 0){
-				perror("timeout expired on poll()");
-				continue;
-			}else {
-				/* então existe pelo menos 1 poll active, QUAL???? loops ;) */
-				for(i = 0; i < numFds; i++){
-					//procura...0 nao houve return events
-					if(socketsPoll[i].revents == 0){continue;}
-
-					//se houve temos de ver se foi POLLIN
-					if(socketsPoll[i].revents != POLLIN){
-     					printf("  Error! revents = %d\n", socketsPoll[i].revents);
-       					break;
-     				}
-
-     				//se for POLLIN pode ser no listening_socket ou noutro qualquer...
-     				if(socketsPoll[i].fd == listening_socket){
-     					//quer dizer que temos de aceitar todas as ligações com a nossa socket listening
-						size_client = sizeof(struct sockaddr_in);
-     					connsock = accept(listening_socket, (struct sockaddr *) &client, &size_client);
-     					if (connsock < 0){
-           					if (errno != EWOULDBLOCK){
-              					perror("  accept() failed");
-           			 		}
-           			 		break;
-          				}
-
-						printf("cliente conectado\n");
-
-          				//VAMOS TRATAR O PEDIDO AQUI, 1 DE CADA VEZ . NO SECUNDARIO
-          				close_conn = FALSE;
-          				int primary_server_on = TRUE;
-          				int result = network_receive_send(connsock);
-          				if(result == CHANGE_ROUTINE){
-          					isPrimary = TRUE;
-          					subRoutinePrimary();
-          				}
-
-     			
-     					//fim do if do listening
-     				}else{
-						/* não é o listening....então deve ser outro...
-							etapa 4, o outro agora pode ser o stdin */
-						if(socketsPoll[i].fd == stdin_fd){
-							/*
-							fgets(buffer, 10, socketsPoll[i].fd);
-							*/
-							char buffer;
-							char *print = "print";
-							gets(&buffer);
-							// read word "print" return 0 if equals
-							int equals = strcmp(print, &buffer);
-							printf("string = %s , equals = %d\n", &buffer , equals);
-							if(equals == 0){
-								struct message_t *msg_resposta;							
-								struct message_t *msg_pedido = (struct message_t *)
-										malloc(sizeof(struct message_t));
-								if(msg_pedido == NULL){
-									perror("Problema na criação da mensagem de pedido\n");
-								}
-								// codes
-								msg_pedido->opcode = OC_GET;
-								msg_pedido->c_type = CT_KEY;
-								// Skel vai verificar se content.key == !
-								msg_pedido->content.key = "!";
-								msg_resposta = invoke(msg_pedido);
-								if(msg_resposta == NULL){
-									perror("Problema na mensagem de resposta\n");
-								}								
-								printf("********************************\n");
-								
-								printf("* servidor secundario\n");
-								if(msg_resposta->content.keys[0] != NULL){ 
-									int i = 0;
-									while(msg_resposta->content.keys[i] != NULL){
-										printf("* key[%d]: %s\n", i, msg_resposta->content.keys[i]);
-										i++;
-									}
-								}else{
-									printf("* tabela vazia\n");
-								}
-								printf("*\n********************************\n");						
-							}	
-						
-						}else{
-							/*
-		 					close_conn = FALSE;
-		 					client_on = TRUE;
-		 					printf("cliente fez pedido\n");
-		 					//while(client_on){
-		 						//receive data
-		 					int result = network_receive_send(socketsPoll[i].fd);
-		 					if(result < 0){ 
-		 						//ou mal recebida ou o cliente desconectou
-		 						// -> close connection
-		 						printf("cliente desconectou\n");
-		 						 //fecha o fileDescriptor
-		 						close(socketsPoll[i].fd);
-		 						//set fd -1
-		      					socketsPoll[i].fd = -1;
-		      					compress_list = TRUE;
-								int j;
-								if (compress_list){
-									compress_list = FALSE;
-									for (i = 0; i < numFds; i++){
-										if (socketsPoll[i].fd == -1){
-				    						for(j = i; j < numFds; j++){
-				        						socketsPoll[j].fd = socketsPoll[j+1].fd;
-				      						}
-				    						numFds--;
-				    					}
-									}
-								}
-		 					}	
-		 					*/
-						}//Fim do else de outros fd's
-
-	   				}//fim da ligacao cliente-servidor
-     			}//fim do else
-			}//fim do for numFds
-		}
-			//se a lista tiver fragmentada, devemos comprimir 
-	}//fim do for polls
-	return OK;
+void *threaded_send_receive(void * threadID){
+	printf("thread started\n");
+	while(TRUE){
+		printf("inside while\n");
+		pthread_mutex_lock(&mutex);
+			printf("inside mutex in threaded send receive\n");
+		pthread_mutex_unlock(&mutex);
+	}
+	pthread_exit(NULL);
 }
-
 
 int serverInit(char *myPort, char *listSize){
 		listening_socket = make_server_socket(atoi(myPort));
@@ -587,7 +496,7 @@ int main(int argc, char **argv){
 		result = serverInit(myPort, listSize);
 		if(result == ERROR){return ERROR;}
 
-		subRoutineSecondary();
+		subRoutinePrimary();
 	}else{
 		//errou
 		printf("\nUso do primario: ./server <porta TCP> <IP secundario> <porta TCP secundario> <dimensão da tabela>\n");

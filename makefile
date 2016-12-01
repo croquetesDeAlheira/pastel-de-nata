@@ -25,7 +25,7 @@ table-client: $(OBJFILES_CLIENT)
 	gcc -o table-client $(OBJFILES_CLIENT)
 	
 table-server: $(OBJFILES_SERVER)
-	gcc -o table-server $(OBJFILES_SERVER)
+	gcc -pthread -o table-server $(OBJFILES_SERVER)
 	
 #test_message: $(OBJFILES_MESSAGE)
 #	gcc -o test_message $(OBJFILES_MESSAGE)
