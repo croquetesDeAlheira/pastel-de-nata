@@ -8,8 +8,8 @@
 
 /*
    Programa que implementa um servidor de uma tabela hash com chainning.
-   Uso: table-server <porta TCP> <dimensão da tabela>
-   Exemplo de uso: ./table_server 54321 10
+   Uso: table-serverAux <porta TCP> <dimensão da tabela>
+   Exemplo de uso: ./table_serverAux 54321 10
 */
 #include <error.h>
 #include <errno.h>
@@ -24,6 +24,7 @@
 #include "../include/table-private.h"
 #include "../include/message-private.h"
 #include "../include/table_skel.h"
+#include "../include/primary_backup-private.h"
 
 #define ERROR -1
 #define OK 0
@@ -47,10 +48,13 @@ int stdin_fd; // socket do stdin (keyboard input - stdin)
 int connsock; // sockets conectada
 int result; // resultado de operacoes
 int client_on = TRUE; // booleano cliente conectado
-int server_on = TRUE; // booleano servidor online
+int serverAux_on = TRUE; // booleano servidor online
 struct sockaddr_in client; // struct cliente
 socklen_t size_client; // size cliente
 int checkPoll; // check do poll , verificar se houve algo no poll
+struct server_t *server; //servidor
+char *portoSecundario;
+char *ipSecundario;
 
 int activeFDs = 0; //num de fds activos
 int close_conn; 
@@ -59,7 +63,7 @@ int compress_list; //booleano representa se deve fazer compress da de socketsPol
 pthread_mutex_t mutex;
 
 
-void finishServer(int signal){
+void finishserverAux(int signal){
     //close dos sockets
     for (i = 0; i < numFds; i++){
     	if(socketsPoll[i].fd >= 0){
@@ -72,10 +76,10 @@ void finishServer(int signal){
 }
 /* Função para preparar uma socket de receção de pedidos de ligação.
 */
-int make_server_socket(short port){
+int make_serverAux_socket(short port){
   int socket_fd;
   int rc, on = 1;
-  struct sockaddr_in server;
+  struct sockaddr_in serverAux;
 
   if ((socket_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
     perror("Erro ao criar socket");
@@ -90,13 +94,13 @@ int make_server_socket(short port){
   	return ERROR;
   }
 
-  server.sin_family = AF_INET;
-  server.sin_port = htons(port);  
-  server.sin_addr.s_addr = htonl(INADDR_ANY);
+  serverAux.sin_family = AF_INET;
+  serverAux.sin_port = htons(port);  
+  serverAux.sin_addr.s_addr = htonl(INADDR_ANY);
 
 
 
-  if (bind(socket_fd, (struct sockaddr *) &server, sizeof(server)) < 0){
+  if (bind(socket_fd, (struct sockaddr *) &serverAux, sizeof(serverAux)) < 0){
       perror("Erro ao fazer bind");
       close(socket_fd);
       return -1;
@@ -204,8 +208,6 @@ int network_receive_send(int sockfd){
 		//caso não tenha mudado, veio de um cliente
 		if(opcode == msg_pedido->opcode){
 			//mudar rotina 
-
-
 			printf("siga mudar rotina \n");
 			changeRoutine = TRUE;
 		}//se nao mudou, simplesmente continua...
@@ -236,8 +238,19 @@ int network_receive_send(int sockfd){
 		//caso tenha mudado, enviar para o secundario
 		if(opcode != msg_pedido->opcode){
 			//enviar
-			pthread_mutex_unlock(&mutex);
+			
 			printf("enviar para o secundario\n");
+			
+			pthread_t thread;
+			long id = 1234;
+			int threadCreated = pthread_create(&thread, NULL, threaded_send_receive, (void *)msg_pedido);
+			if (threadCreated){
+         		printf("ERROR; return code from pthread_create() is %d\n", threadCreated);
+          		exit(ERROR);
+      		}
+      		pthread_mutex_unlock(&mutex);
+      		//receber resultado
+      		//pthread_join(id);
 			pthread_mutex_lock(&mutex);
 			/*
 				ENVIAR PARA O SECUNDARIO AQUI
@@ -278,7 +291,7 @@ int network_receive_send(int sockfd){
 	}
 }
 
-int subRoutinePrimary(){
+int subRoutine(){
 	//Codigo de acordo com as normas da IBM
 	/*make a reusable listening socket*/
 	/* ciclo para receber os clients conectados */
@@ -292,21 +305,13 @@ int subRoutinePrimary(){
 		}
 		//o primario ganha poder do mutex
 		pthread_mutex_lock(&mutex);
-		pthread_t thread;
-		long id = 1234;
-		int threadCreated = pthread_create(&thread, NULL, threaded_send_receive, (void *)id);
-		if (threadCreated){
-          printf("ERROR; return code from pthread_create() is %d\n", threadCreated);
-          exit(ERROR);
-      	}
-		
 
       	
 	}else{
 		printf("a espera de clientes secundario...\n");
 	}
 	//call poll and check
-	while(server_on){ //while no cntrl c
+	while(serverAux_on){ //while no cntrl c
 		while((checkPoll = poll(socketsPoll, numFds, TIMEOUT)) >= 0){
 
 			//verifica se nao houve evento em nenhum socket
@@ -417,7 +422,7 @@ int subRoutinePrimary(){
 								}
 		 					}else if(result == CHANGE_ROUTINE){
 		 						isPrimary = TRUE;
-		 						subRoutinePrimary();
+		 						subRoutine();
 		 					}
 
 						}//Fim do else de outros fd's
@@ -430,19 +435,12 @@ int subRoutinePrimary(){
 	}//fim do for polls
 	return OK;
 }
-void *threaded_send_receive(void * threadID){
-	printf("thread started\n");
-	while(TRUE){
-		printf("inside while\n");
-		pthread_mutex_lock(&mutex);
-			printf("inside mutex in threaded send receive\n");
-		pthread_mutex_unlock(&mutex);
-	}
-	pthread_exit(NULL);
-}
 
-int serverInit(char *myPort, char *listSize){
-		listening_socket = make_server_socket(atoi(myPort));
+
+
+
+int serverAuxInit(char *myPort, char *listSize){
+		listening_socket = make_serverAux_socket(atoi(myPort));
 		//check if done right
 		if(listening_socket < 0){return -1;}
 		
@@ -465,7 +463,7 @@ int serverInit(char *myPort, char *listSize){
 }
 int main(int argc, char **argv){
 	// caso seja pressionado o ctrl+c
-	 signal(SIGINT, finishServer);
+	 signal(SIGINT, finishserverAux);
 	
 	/* o numero de argumentos eh diferente entre secundario e primario 
 		primario = programa + seuPorto + ipSecundario + portoSecundario + listSize
@@ -480,10 +478,10 @@ int main(int argc, char **argv){
 		char *listSize = /*argv[4]*/ "10";
 
 		//inicializa servidor
-		result = serverInit(myPort, listSize);
+		result = serverAuxInit(myPort, listSize);
 		if(result == ERROR){return ERROR;}
 
-		subRoutinePrimary();
+		subRoutine();
 
 	}else if(argc == 1){
 		//secundario
@@ -493,17 +491,204 @@ int main(int argc, char **argv){
 		char *listSize = /*argv[2]*/ "10";
 
 		//inicializa servidor
-		result = serverInit(myPort, listSize);
+		result = serverAuxInit(myPort, listSize);
 		if(result == ERROR){return ERROR;}
 
-		subRoutinePrimary();
+		subRoutine();
 	}else{
 		//errou
-		printf("\nUso do primario: ./server <porta TCP> <IP secundario> <porta TCP secundario> <dimensão da tabela>\n");
-		printf("	Exemplo de uso: ./table-server 54321 127.0.0.1 54322 10\n");
-		printf("Uso do secundario: ./server <porta TCP> <dimensão da tabela>\n");
-		printf("	Exemplo de uso: ./table-server 54321 10\n\n");
+		printf("\nUso do primario: ./serverAux <porta TCP> <IP secundario> <porta TCP secundario> <dimensão da tabela>\n");
+		printf("	Exemplo de uso: ./table-serverAux 54321 127.0.0.1 54322 10\n");
+		printf("Uso do secundario: ./serverAux <porta TCP> <dimensão da tabela>\n");
+		printf("	Exemplo de uso: ./table-serverAux 54321 10\n\n");
 		return ERROR;
 	}
 
 }//fim main
+
+
+
+
+
+/********************************
+**
+**  METODOS UTILIZADOS PELA THREAD
+**
+**********************************/
+void *threaded_send_receive(void *msg_pedido){
+	printf("thread started\n");
+
+	char *threadRetun;
+	printf("inside while\n");
+	pthread_mutex_lock(&mutex);
+		printf("inside mutex in threaded send receive\n");
+		if(server == NULL){
+			//criar servidor primeiro
+			server = linkToSecServer();
+			if(server == NULL){
+				server = linkToSecServer();
+				if(server == NULL){
+					//destruir thread
+					threadRetun = "-1";
+				}
+			}
+		}
+		
+		//enviar para o servidor secundario
+		struct message_t *msg_resposta;
+		if(msg_pedido == NULL){
+			//acabar thread
+			threadRetun = "-1";
+		}
+		msg_resposta = network_send_receive(server, msg_pedido);
+		if(msg_resposta == NULL){
+			//acabar thread
+		}else{
+			//acabou bem
+			if(msg_resposta->c_type == CT_RESULT){
+				if(msg_resposta->content.result == OK){
+					threadRetun = "0";
+				}else{
+					threadRetun = "-1";
+				}
+			}else{
+				threadRetun = "-1";
+			}
+
+		}
+
+	pthread_mutex_unlock(&mutex);
+	
+
+	return threadRetun;
+}
+struct server_t* linkToSecServer(){
+	struct server_t *serverAux = (struct server_t*)malloc(sizeof(struct server_t));
+	
+	/* Verificar parâmetro da função e alocação de memória */
+	if(serverAux == NULL){ return NULL; }
+	/* allocar a memoria do addrs dentro do serverAux*/
+	serverAux->addr = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
+	if(serverAux->addr == NULL){
+		free(serverAux);
+		return NULL;
+	}
+
+	// // Separar os elementos da string, ip : porto	
+	// const char ip_port_seperator[2] = ":";
+	// char *ip, *port, *p;
+	// // adress_por é constante
+	// p = strdup(address_port);
+	// char *token = strtok(p, ip_port_seperator);
+	// ip = strdup(token);
+	// token = strtok(NULL, ip_port_seperator);
+	// port = strdup(token);
+	// free(p);
+	
+	//fixing inet addrs
+	int inet_res = inet_pton(AF_INET, ipSecundario, &(serverAux->addr->sin_addr));
+	if(inet_res == -1){
+		free(serverAux->addr);
+		free(serverAux);
+		return NULL;
+	}else if(inet_res == 0){
+		printf("Endereço IP não é válido\n");
+		free(serverAux->addr);
+		free(serverAux);
+		return NULL;
+	}
+
+	// Porto	
+	serverAux->addr->sin_port = htons(atoi(portoSecundario));
+	// Tipo
+	serverAux->addr->sin_family = AF_INET;
+	
+	// Criação do socket
+	int sockt;
+	// Também pode ser usado o SOCK_DGRAM no tipo, UDP
+	if((sockt = socket(AF_INET, SOCK_STREAM, 0)) < 0){
+		perror("Problema na criação do socket\n");
+		free(serverAux->addr);
+		free(serverAux);
+		return NULL;
+	}
+
+	// Estabeleber ligação
+	if(connect(sockt, (struct sockaddr *) (serverAux->addr), sizeof(struct sockaddr_in)) < 0){
+		perror("Problema a conectar ao servidor\n");
+		free(serverAux->addr);
+		free(serverAux);
+		return NULL;
+	}
+
+	/* Se a ligação não foi estabelecida, retornar NULL */
+	serverAux->socket = sockt;
+	return serverAux;
+}
+
+
+struct message_t *network_send_receive(struct server_t *server, struct message_t *msg){
+	char *message_out;
+	int message_size, msg_size, result;
+	struct message_t *msg_resposta;
+	
+
+	/* Verificar parâmetros de entrada */
+	if(server == NULL || msg == NULL){return NULL;}
+
+	/* Serializar a mensagem recebida */
+	message_size = message_to_buffer(msg, &message_out);
+
+	/* Verificar se a serialização teve sucesso */
+	if(message_size <= 0){return NULL;} //ocorreu algum erro
+
+	/* Enviar ao servidor o tamanho da mensagem que será enviada
+	   logo de seguida
+	*/
+	msg_size = htonl(message_size);
+ 	result = write_all(server->socket, (char *) &msg_size, _INT); //envia o size primeiro
+	/* Verificar se o envio teve sucesso */
+	if(result != _INT){return NULL;}
+
+
+	/* Enviar a mensagem que foi previamente serializada */
+	result = write_all(server->socket, message_out, message_size);
+
+	/* Verificar se o envio teve sucesso */
+	if(result != message_size){return NULL;} //enviar de novo?
+
+	/* De seguida vamos receber a resposta do servidor:*/
+	/*		Com a função read_all, receber num inteiro o tamanho da 
+		mensagem de resposta.*/
+	result = read_all(server->socket, (char *) &msg_size, _INT);
+	if(result != _INT){return NULL;}
+	
+	message_size = ntohl(msg_size);
+	free(message_out);
+	
+	/*	Alocar memória para receber o número de bytes da
+		mensagem de resposta.*/
+	message_out = (char *) malloc(message_size);
+	/*		Com a função read_all, receber a mensagem de resposta. */
+	
+	result = read_all(server->socket, message_out, message_size);
+	if(result != message_size){
+		free(message_out);
+		return NULL;
+	}
+
+
+	/* Desserializar a mensagem de resposta */
+	msg_resposta = buffer_to_message(message_out, message_size);
+
+	/* Verificar se a desserialização teve sucesso */
+	if(msg_resposta == NULL){
+		free(message_out);	
+		return NULL;
+	}
+	/* Libertar memória */
+	free(message_out);
+
+	return msg_resposta;
+}
+
