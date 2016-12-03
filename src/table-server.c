@@ -60,8 +60,15 @@ int activeFDs = 0; //num de fds activos
 int close_conn; 
 int compress_list; //booleano representa se deve fazer compress da de socketsPoll
 
-pthread_mutex_t mutex;
 
+int dadosProntos;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t dados_para_enviar = PTHREAD_COND_INITIALIZER;
+struct thread_params{
+	struct message_t *msg;
+	int threadResult; // o resultado do envio da thread
+};
+struct thread_params *params;
 
 void finishserverAux(int signal){
     //close dos sockets
@@ -118,9 +125,14 @@ int make_serverAux_socket(short port){
    através da socket sock.
 */
 int write_all(int sock, char *buf, int len){
+	printf("start writeall\n");
 	int bufsize = len;
 	while(len > 0){
 		int res = write(sock, buf, len);
+		if(res == 0){
+			//servidor disconnected...
+			return ERROR;
+		}
 		if(res < 0){
 			if(errno == EINTR) continue;
 			perror("write failed:");
@@ -129,12 +141,14 @@ int write_all(int sock, char *buf, int len){
 		buf+= res;
 		len-= res;
 	}
+	printf("fim writeall\n");
 	return bufsize;
 }
 /* Função que garante a receção de len bytes através da socket sock,
    armazenando-os em buf.
 */
 int read_all(int sock, char *buf, int len){
+	printf("start readall\n");
 	int bufsize = len;
 	while(len > 0){
 		int res = read(sock, buf, len);
@@ -150,6 +164,7 @@ int read_all(int sock, char *buf, int len){
 		buf+= res;
 		len-= res;
 	}
+	printf("fim readall\n");
 	return bufsize;
 }
 /* Função "inversa" da função network_send_receive usada no table-client.
@@ -199,7 +214,7 @@ int network_receive_send(int sockfd){
 		//verificar & mudar code
 		if( opcode == OC_DEL_S){
 			msg_pedido->opcode = OC_DEL;
-		}else if(opcode == OC_UPDATE_S ){
+		}else if( opcode == OC_UPDATE_S ){
 			msg_pedido->opcode = OC_UPDATE;
 		}else if( opcode == OC_PUT_S ){
 			msg_pedido->opcode = OC_PUT;
@@ -227,35 +242,44 @@ int network_receive_send(int sockfd){
 		//ja temos o opcode
 		int opcode = msg_pedido->opcode;
 		//verificar & se for algum, mudar o opcode da mensage
-		if( opcode == OC_DEL ){
-			msg_pedido->opcode = OC_DEL_S;
-		}else if(opcode == OC_UPDATE ){
-			msg_pedido->opcode = OC_UPDATE_S;
-		}else if( opcode == OC_PUT ){
-			msg_pedido->opcode = OC_PUT_S;
-		}
 
-		//caso tenha mudado, enviar para o secundario
-		if(opcode != msg_pedido->opcode){
-			//enviar
-			
-			printf("enviar para o secundario\n");
-			
-			pthread_t thread;
-			long id = 1234;
-			int threadCreated = pthread_create(&thread, NULL, threaded_send_receive, (void *)msg_pedido);
-			if (threadCreated){
-         		printf("ERROR; return code from pthread_create() is %d\n", threadCreated);
-          		exit(ERROR);
-      		}
-      		pthread_mutex_unlock(&mutex);
-      		//receber resultado
-      		//pthread_join(id);
-			pthread_mutex_lock(&mutex);
-			/*
-				ENVIAR PARA O SECUNDARIO AQUI
-				DEVE SER FEITO ATRAVES DE UMA THREAD
-			*/
+		if(isSecondaryOn){
+			printf("secundario online\n");
+			if( opcode == OC_DEL ){
+				msg_pedido->opcode = OC_DEL_S;
+			}else if(opcode == OC_UPDATE ){
+				msg_pedido->opcode = OC_UPDATE_S;
+			}else if( opcode == OC_PUT ){
+				msg_pedido->opcode = OC_PUT_S;
+			}
+
+			//caso tenha mudado, enviar para o secundario
+			if(opcode != msg_pedido->opcode){
+				//enviar
+				printf("enviar para o secundario\n");
+
+				params->msg = msg_pedido;
+				dadosProntos = ERROR;
+				printf("dadosProntos = %d\n", dadosProntos);
+				pthread_cond_signal(&dados_para_enviar);
+	      		pthread_mutex_unlock(&mutex);
+	      		//receber resultado
+	      		// void *threadRetun;pthread_join(thread, NULL);
+	      		// printf(" char = %s\n", (char *) &(*threadRetun) );
+	      		// int resultThread = atoi((char *)&threadRetun)
+	      		while(dadosProntos != OK){}
+				pthread_mutex_lock(&mutex);
+				if(params->threadResult = ERROR && params->msg == NULL){
+					//é pq o secundario desconectou
+
+				}
+				/*
+					ENVIAR PARA O SECUNDARIO AQUI
+					DEVE SER FEITO ATRAVES DE UMA THREAD
+				*/
+			}
+		}else{
+			printf("secundario offline\n");
 		}
 	}
 
@@ -305,6 +329,15 @@ int subRoutine(){
 		}
 		//o primario ganha poder do mutex
 		pthread_mutex_lock(&mutex);
+					
+		pthread_t thread;
+		long id = 1234;
+		int threadCreated = pthread_create(&thread, NULL, threaded_send_receive, NULL);
+		if (threadCreated){
+     		printf("ERROR; return code from pthread_create() is %d\n", threadCreated);
+      		exit(ERROR);
+  		}
+
 
       	
 	}else{
@@ -359,7 +392,6 @@ int subRoutine(){
 							gets(&buffer);
 							// read word "print" return 0 if equals
 							int equals = strcmp(print, &buffer);
-							printf("string = %s , equals = %d\n", &buffer , equals);
 							if(equals == 0){
 								struct message_t *msg_resposta;							
 								struct message_t *msg_pedido = (struct message_t *)
@@ -377,8 +409,11 @@ int subRoutine(){
 									perror("Problema na mensagem de resposta\n");
 								}								
 								printf("********************************\n");
-								
-								printf("* servidor primario\n");
+								if(isPrimary){
+									printf("* servidor primario\n");
+								}else{
+									printf("* servidor secundario\n");
+								}
 								if(msg_resposta->content.keys[0] != NULL){ 
 									int i = 0;
 									while(msg_resposta->content.keys[i] != NULL){
@@ -480,7 +515,8 @@ int main(int argc, char **argv){
 		//inicializa servidor
 		result = serverAuxInit(myPort, listSize);
 		if(result == ERROR){return ERROR;}
-
+		ipSecundario = secIP;
+		portoSecundario = secPort;
 		subRoutine();
 
 	}else if(argc == 1){
@@ -493,6 +529,7 @@ int main(int argc, char **argv){
 		//inicializa servidor
 		result = serverAuxInit(myPort, listSize);
 		if(result == ERROR){return ERROR;}
+
 
 		subRoutine();
 	}else{
@@ -515,53 +552,70 @@ int main(int argc, char **argv){
 **  METODOS UTILIZADOS PELA THREAD
 **
 **********************************/
-void *threaded_send_receive(void *msg_pedido){
+void *threaded_send_receive(void *parametro){
 	printf("thread started\n");
 
-	char *threadRetun;
-	printf("inside while\n");
-	pthread_mutex_lock(&mutex);
 		printf("inside mutex in threaded send receive\n");
-		if(server == NULL){
-			//criar servidor primeiro
-			server = linkToSecServer();
-			if(server == NULL){
+		if(!isSecondaryOn){
+				if(server == NULL){
+				//criar servidor primeiro
 				server = linkToSecServer();
 				if(server == NULL){
-					//destruir thread
-					threadRetun = "-1";
-				}
+					server = linkToSecServer();
+					if(server == NULL){
+						//destruir thread
+						return NULL;
+					}else{isSecondaryOn = TRUE;}
+				}else{isSecondaryOn = TRUE;}
 			}
 		}
-		
-		//enviar para o servidor secundario
-		struct message_t *msg_resposta;
-		if(msg_pedido == NULL){
-			//acabar thread
-			threadRetun = "-1";
-		}
-		msg_resposta = network_send_receive(server, msg_pedido);
-		if(msg_resposta == NULL){
-			//acabar thread
-		}else{
-			//acabou bem
-			if(msg_resposta->c_type == CT_RESULT){
-				if(msg_resposta->content.result == OK){
-					threadRetun = "0";
-				}else{
-					threadRetun = "-1";
-				}
+		printf("connected to secundario\n");
+		params = (struct thread_params *) malloc(sizeof(struct thread_params));
+		if(params == NULL){return NULL;}
+		dadosProntos = 0;
+		//ciclo de espera e envio
+		while(isSecondaryOn){
+			printf("\n\n\n\n");
+			params->threadResult = OK;
+
+
+			pthread_mutex_lock(&mutex);
+			while(dadosProntos == 0){
+				pthread_cond_wait(&dados_para_enviar, &mutex);
+			}
+			//enviar para o servidor secundario
+			struct message_t *msg_resposta;
+			if(params->msg == NULL){
+				//acabar thread
+				params->threadResult = ERROR;
+			}
+			msg_resposta = network_send_receive(server, params->msg);
+			if(msg_resposta == NULL){
+				//acabar thread ocorreu um erro
+				printf("secun off\n");
+				isSecondaryOn = FALSE;
+				params->threadResult = ERROR;
 			}else{
-				threadRetun = "-1";
-			}
+				//acabou bem
+				if(msg_resposta->c_type == CT_RESULT){
+					if(msg_resposta->content.result == OK){
+						params->threadResult = OK;
+					}else{
+						params->threadResult = ERROR;
+					}
+				}else{
+					params->threadResult = ERROR;
+				}
 
+			}
+			dadosProntos = 0;
+			pthread_mutex_unlock(&mutex);
 		}
 
-	pthread_mutex_unlock(&mutex);
-	
 
-	return threadRetun;
+	return NULL;
 }
+
 struct server_t* linkToSecServer(){
 	struct server_t *serverAux = (struct server_t*)malloc(sizeof(struct server_t));
 	
@@ -623,6 +677,9 @@ struct server_t* linkToSecServer(){
 
 	/* Se a ligação não foi estabelecida, retornar NULL */
 	serverAux->socket = sockt;
+	if(portoSecundario != NULL){serverAux->porto = portoSecundario;}
+	if(ipSecundario != NULL){serverAux->ip = ipSecundario;}
+	isSecondaryOn = TRUE;
 	return serverAux;
 }
 
@@ -631,7 +688,6 @@ struct message_t *network_send_receive(struct server_t *server, struct message_t
 	char *message_out;
 	int message_size, msg_size, result;
 	struct message_t *msg_resposta;
-	
 
 	/* Verificar parâmetros de entrada */
 	if(server == NULL || msg == NULL){return NULL;}
@@ -647,12 +703,15 @@ struct message_t *network_send_receive(struct server_t *server, struct message_t
 	*/
 	msg_size = htonl(message_size);
  	result = write_all(server->socket, (char *) &msg_size, _INT); //envia o size primeiro
+ 	printf("enviou size...\n");
 	/* Verificar se o envio teve sucesso */
 	if(result != _INT){return NULL;}
 
 
 	/* Enviar a mensagem que foi previamente serializada */
+
 	result = write_all(server->socket, message_out, message_size);
+	printf("enviou...\n");
 
 	/* Verificar se o envio teve sucesso */
 	if(result != message_size){return NULL;} //enviar de novo?
@@ -673,6 +732,8 @@ struct message_t *network_send_receive(struct server_t *server, struct message_t
 	
 	result = read_all(server->socket, message_out, message_size);
 	if(result != message_size){
+
+		printf("erro no size 5");
 		free(message_out);
 		return NULL;
 	}
@@ -684,6 +745,8 @@ struct message_t *network_send_receive(struct server_t *server, struct message_t
 	/* Verificar se a desserialização teve sucesso */
 	if(msg_resposta == NULL){
 		free(message_out);	
+
+		printf("erro resposta");
 		return NULL;
 	}
 	/* Libertar memória */

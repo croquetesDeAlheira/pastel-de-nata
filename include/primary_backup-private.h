@@ -3,7 +3,8 @@
  struct server_t {
  	int socket;
 	struct sockaddr_in *addr;
- 	char *ip_addr1;
+ 	char *ip;
+ 	char *porto;
  };
 
   /*Função usada para um servidor avisar o servidor "server" de que

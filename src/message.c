@@ -398,6 +398,15 @@ int opIsValid(short opcode){
 		case OC_PUT + 1 :
 			return 1;
 			break;
+		case OC_PUT_S:
+			return 1;
+			break;
+		case OC_UPDATE_S:
+			return 1;
+			break;
+		case OC_DEL_S:
+			return 1;
+			break;
 		default :
 			return 0;
 	}
