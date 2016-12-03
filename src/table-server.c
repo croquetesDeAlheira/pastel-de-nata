@@ -33,6 +33,7 @@
 #define FALSE 0 // boolean false
 #define NCLIENTS 10 // Número de sockets (uma para listening e uma para o stdin)
 #define TIMEOUT -1 // em milisegundos
+#define LOG_LENGTH 16 // Tamanho da string ip:porto para o ficheiro de log
 
 
 //declarações
@@ -60,7 +61,6 @@ int activeFDs = 0; //num de fds activos
 int close_conn; 
 int compress_list; //booleano representa se deve fazer compress da de socketsPoll
 
-
 int dadosProntos;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t dados_para_enviar = PTHREAD_COND_INITIALIZER;
@@ -69,6 +69,65 @@ struct thread_params{
 	int threadResult; // o resultado do envio da thread
 };
 struct thread_params *params;
+
+/********************************
+**
+**            METODOS
+**
+**********************************/
+
+/*
+Escreve/Atualiza no ficheiro de log ip:porto do primario,
+onde ip_port é o porto:ip do novo servidor primario e
+e file_name é o nome do ficheiro de log
+Retorna 0 em caso de sucesso, caso contrario -1
+*/
+int write_log(char* ip_port, char* file_name) {
+	FILE *fd;	// File descriptor
+	// Open file
+	fd = fopen(file_name, "w+");
+	// check fd
+	if (fd == NULL) {return ERROR;}
+	// Write in file
+	fd = fputs(ip_port, fd);
+	// Fecha file descriptor
+	fclose(fd);
+	
+	return OK;
+}
+
+/*
+Le do ficheiro o ip_porto do servidor primario
+Onde file_name é o nome do ficheiro de log e
+ip_port_buffer é para onde vai ser copiado ip_porto do 
+servidor primário atual
+Retorna 0 em caso de sucesso, caso contrario, -1
+*/
+int read_log(char* file_name, char* ip_port_buffer) {
+	FILE *fd; // File descriptor
+	// Open file
+	fd = fopen(file_name, 'r');
+
+	// Testa de file descriptor consegue ler o ficheiro
+	if (fd == NULL) {return ERROR;}
+
+	// Le o ficheiro para o apontador
+	fread(ip_port_buffer, 1, LOG_LENGTH, fd);
+	fclose(fd);
+
+	return OK;
+}
+
+/*
+Apaga o ficheiro de log
+Onde file_name é o nome do ficheiro de log
+Retorna 0 em caso de sucesso, coso contrário -1
+*/
+int destroy_log(char* file_name) {
+	// Resultado da operação
+	return remove(file_name);
+}
+
 
 void finishserverAux(int signal){
     //close dos sockets
