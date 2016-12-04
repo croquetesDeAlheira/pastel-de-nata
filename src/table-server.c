@@ -34,7 +34,7 @@
 #define NCLIENTS 10 // Número de sockets (uma para listening e uma para o stdin)
 #define TIMEOUT -1 // em milisegundos
 #define LOG_LENGTH 16 // Tamanho da string ip:porto para o ficheiro de log
-
+char * FILE_NAME = "serverfile.txt";
 
 //declarações
 void *threaded_send_receive(void *threadID);
@@ -56,7 +56,6 @@ int checkPoll; // check do poll , verificar se houve algo no poll
 struct server_t *server; //servidor
 char *portoSecundario;
 char *ipSecundario;
-
 int activeFDs = 0; //num de fds activos
 int close_conn; 
 int compress_list; //booleano representa se deve fazer compress da de socketsPoll
@@ -70,6 +69,9 @@ struct thread_params{
 };
 struct thread_params *params;
 
+
+
+
 /********************************
 **
 **            METODOS
@@ -82,14 +84,14 @@ onde ip_port é o porto:ip do novo servidor primario e
 e file_name é o nome do ficheiro de log
 Retorna 0 em caso de sucesso, caso contrario -1
 */
-int write_log(char* ip_port, char* file_name) {
+int write_log(char* file_name,char* ip_port) {
 	FILE *fd;	// File descriptor
 	// Open file
 	fd = fopen(file_name, "w+");
 	// check fd
 	if (fd == NULL) {return ERROR;}
 	// Write in file
-	fd = fputs(ip_port, fd);
+	fputs(ip_port, fd);
 	// Fecha file descriptor
 	fclose(fd);
 	
@@ -106,7 +108,7 @@ Retorna 0 em caso de sucesso, caso contrario, -1
 int read_log(char* file_name, char* ip_port_buffer) {
 	FILE *fd; // File descriptor
 	// Open file
-	fd = fopen(file_name, 'r');
+	fd = fopen(file_name, "r");
 
 	// Testa de file descriptor consegue ler o ficheiro
 	if (fd == NULL) {return ERROR;}
@@ -140,6 +142,8 @@ void finishserverAux(int signal){
 	printf("\n :::: -> SERVIDOR ENCERRADO <- :::: \n");
 	exit(0);
 }
+
+
 /* Função para preparar uma socket de receção de pedidos de ligação.
 */
 int make_serverAux_socket(short port){
@@ -184,7 +188,6 @@ int make_serverAux_socket(short port){
    através da socket sock.
 */
 int write_all(int sock, char *buf, int len){
-	printf("start writeall\n");
 	int bufsize = len;
 	while(len > 0){
 		int res = write(sock, buf, len);
@@ -200,14 +203,12 @@ int write_all(int sock, char *buf, int len){
 		buf+= res;
 		len-= res;
 	}
-	printf("fim writeall\n");
 	return bufsize;
 }
 /* Função que garante a receção de len bytes através da socket sock,
    armazenando-os em buf.
 */
 int read_all(int sock, char *buf, int len){
-	printf("start readall\n");
 	int bufsize = len;
 	while(len > 0){
 		int res = read(sock, buf, len);
@@ -223,7 +224,6 @@ int read_all(int sock, char *buf, int len){
 		buf+= res;
 		len-= res;
 	}
-	printf("fim readall\n");
 	return bufsize;
 }
 /* Função "inversa" da função network_send_receive usada no table-client.
@@ -282,7 +282,7 @@ int network_receive_send(int sockfd){
 		//caso não tenha mudado, veio de um cliente
 		if(opcode == msg_pedido->opcode){
 			//mudar rotina 
-			printf("siga mudar rotina \n");
+			printf("primario foi abaixo >> mudar de rotina\n");
 			changeRoutine = TRUE;
 		}//se nao mudou, simplesmente continua...
 	}
@@ -303,7 +303,6 @@ int network_receive_send(int sockfd){
 		//verificar & se for algum, mudar o opcode da mensage
 
 		if(isSecondaryOn){
-			printf("secundario online\n");
 			if( opcode == OC_DEL ){
 				msg_pedido->opcode = OC_DEL_S;
 			}else if(opcode == OC_UPDATE ){
@@ -319,7 +318,6 @@ int network_receive_send(int sockfd){
 
 				params->msg = msg_pedido;
 				dadosProntos = ERROR;
-				printf("dadosProntos = %d\n", dadosProntos);
 				pthread_cond_signal(&dados_para_enviar);
 	      		pthread_mutex_unlock(&mutex);
 	      		//receber resultado
@@ -330,15 +328,14 @@ int network_receive_send(int sockfd){
 				pthread_mutex_lock(&mutex);
 				if(params->threadResult = ERROR && params->msg == NULL){
 					//é pq o secundario desconectou
+					printf("SECUNDARIO OFFLINE\n");
 
+				}else{
+					printf("ENVIADO CORRETAMENTE\n");
 				}
-				/*
-					ENVIAR PARA O SECUNDARIO AQUI
-					DEVE SER FEITO ATRAVES DE UMA THREAD
-				*/
 			}
 		}else{
-			printf("secundario offline\n");
+			//empty ...
 		}
 	}
 
@@ -366,8 +363,6 @@ int network_receive_send(int sockfd){
 	free(msg_resposta);
 	free(msg_pedido);
 	if(changeRoutine){
-
-		printf("send resposta\n");
 		return CHANGE_ROUTINE;
 	}else{
 		return OK;
@@ -400,7 +395,7 @@ int subRoutine(){
 
       	
 	}else{
-		printf("a espera de clientes secundario...\n");
+		printf("a espera de clientes - secundario...\n");
 	}
 	//call poll and check
 	while(serverAux_on){ //while no cntrl c
@@ -443,14 +438,14 @@ int subRoutine(){
 						/* não é o listening....então deve ser outro...
 							etapa 4, o outro agora pode ser o stdin */
 						if(socketsPoll[i].fd == stdin_fd){
-							/*
-							fgets(buffer, 10, socketsPoll[i].fd);
-							*/
-							char buffer;
 							char *print = "print";
-							gets(&buffer);
+							char *buffer = NULL;
+    						int read;
+    						int len;
+    						read = getline(&buffer, &len, stdin);
+    						buffer[5] = '\0';
 							// read word "print" return 0 if equals
-							int equals = strcmp(print, &buffer);
+							int equals = strcmp(print, buffer);
 							if(equals == 0){
 								struct message_t *msg_resposta;							
 								struct message_t *msg_pedido = (struct message_t *)
@@ -469,14 +464,25 @@ int subRoutine(){
 								}								
 								printf("********************************\n");
 								if(isPrimary){
-									printf("* servidor primario\n");
+									printf("* servidor primario\n*\n");
 								}else{
-									printf("* servidor secundario\n");
+									printf("* servidor secundario\n*\n");
 								}
 								if(msg_resposta->content.keys[0] != NULL){ 
 									int i = 0;
+									struct message_t *msg_aux;
+									char *key_to_print;
+									msg_pedido->opcode = OC_GET;
+									msg_pedido->c_type = CT_KEY;
 									while(msg_resposta->content.keys[i] != NULL){
-										printf("* key[%d]: %s\n", i, msg_resposta->content.keys[i]);
+
+										msg_pedido->content.key = msg_resposta->content.keys[i];
+										msg_aux = invoke(msg_pedido);
+										if(msg_aux == NULL){
+										}else{
+											key_to_print = msg_aux->content.data->data;
+										}
+										printf("* ( chave = %s , valor = %s )\n", msg_resposta->content.keys[i], key_to_print);
 										i++;
 									}
 								}else{
@@ -533,7 +539,7 @@ int subRoutine(){
 
 
 
-int serverAuxInit(char *myPort, char *listSize){
+int serverInit(char *myPort, char *listSize){
 		listening_socket = make_serverAux_socket(atoi(myPort));
 		//check if done right
 		if(listening_socket < 0){return -1;}
@@ -555,9 +561,23 @@ int serverAuxInit(char *myPort, char *listSize){
 		socketsPoll[1].events = POLLIN;
 		return OK;
 }
+
+void devide_ip_port(char *address_port, char *ip_ret, char *port_ret){
+	// Separar os elementos da string, ip : porto	
+	const char ip_port_seperator[2] = ":";
+	char *p;
+	// adress_por é constante
+	p = strdup(address_port);
+	char *token = strtok(p, ip_port_seperator);
+	ip_ret = strdup(token);
+	token = strtok(NULL, ip_port_seperator);
+	port_ret = strdup(token);
+	free(p);
+}
 int main(int argc, char **argv){
 	// caso seja pressionado o ctrl+c
 	 signal(SIGINT, finishserverAux);
+	 signal(SIGPIPE, SIG_IGN); //ignore sigpipe
 	
 	/* o numero de argumentos eh diferente entre secundario e primario 
 		primario = programa + seuPorto + ipSecundario + portoSecundario + listSize
@@ -571,11 +591,32 @@ int main(int argc, char **argv){
 		char *secPort = /*argv[3]*/ "44902";
 		char *listSize = /*argv[4]*/ "10";
 
-		//inicializa servidor
-		result = serverAuxInit(myPort, listSize);
-		if(result == ERROR){return ERROR;}
-		ipSecundario = secIP;
-		portoSecundario = secPort;
+
+		//tenta conectar com algum servidor primario
+		char *address_port;
+		result = read_log(FILE_NAME,address_port);
+		if(result == ERROR){
+			//ficheiro nao existe -> sou primario...
+			//inicializa servidor
+			result = serverInit(myPort, listSize);
+			if(result == ERROR){return ERROR;}
+			ipSecundario = secIP;
+			portoSecundario = secPort;
+		}else{
+			char * ip;
+			char * port;
+			devide_ip_port(address_port, ip, port);
+			struct server_t *serverAux = linkToSecServer(ip,port);
+			if(serverAux == NULL){
+				//inicializa servidor
+				result = serverInit(myPort, listSize);
+				if(result == ERROR){return ERROR;}
+				ipSecundario = secIP;
+				portoSecundario = secPort;
+			}else{
+				//HELLO para pedir a tabela -> sou secundario
+			}
+		}
 		subRoutine();
 
 	}else if(argc == 1){
@@ -585,9 +626,29 @@ int main(int argc, char **argv){
 		char *myPort = /*argv[1]*/ "44902";
 		char *listSize = /*argv[2]*/ "10";
 
-		//inicializa servidor
-		result = serverAuxInit(myPort, listSize);
-		if(result == ERROR){return ERROR;}
+		//tenta conectar com algum servidor primario
+		char *address_port;
+		result = read_log(FILE_NAME,address_port);
+		if(result == ERROR){
+			//ficheiro nao existe -> sou secundario..
+			//inicializa servidor
+			result = serverInit(myPort, listSize);
+			if(result == ERROR){return ERROR;}
+		}else{
+			char * ip;
+			char * port;
+			devide_ip_port(address_port, ip, port);
+			struct server_t *serverAux = linkToSecServer(ip,port);
+			if(serverAux == NULL){
+				//inicializa servidor
+				result = serverInit(myPort, listSize);
+				if(result == ERROR){return ERROR;}
+			}else{
+				//HELLO para pedir a tabela
+			}
+		}
+
+
 
 
 		subRoutine();
@@ -613,19 +674,26 @@ int main(int argc, char **argv){
 **********************************/
 void *threaded_send_receive(void *parametro){
 	printf("thread started\n");
-
-		printf("inside mutex in threaded send receive\n");
 		if(!isSecondaryOn){
+			printf(">>>>>> turning server on <<<<<<\n");
 				if(server == NULL){
 				//criar servidor primeiro
-				server = linkToSecServer();
+				server = linkToSecServer(ipSecundario,portoSecundario);
 				if(server == NULL){
 					server = linkToSecServer();
 					if(server == NULL){
 						//destruir thread
 						return NULL;
-					}else{isSecondaryOn = TRUE;}
-				}else{isSecondaryOn = TRUE;}
+					}else{
+						server->porto = portoSecundario;
+						server->ip = ipSecundario;
+						isSecondaryOn = TRUE;
+					}
+				}else{
+					server->porto = portoSecundario;
+					server->ip = ipSecundario;
+					isSecondaryOn = TRUE;
+				}
 			}
 		}
 		printf("connected to secundario\n");
@@ -634,9 +702,7 @@ void *threaded_send_receive(void *parametro){
 		dadosProntos = 0;
 		//ciclo de espera e envio
 		while(isSecondaryOn){
-			printf("\n\n\n\n");
-			params->threadResult = OK;
-
+			params->threadResult = ERROR;
 
 			pthread_mutex_lock(&mutex);
 			while(dadosProntos == 0){
@@ -651,8 +717,9 @@ void *threaded_send_receive(void *parametro){
 			msg_resposta = network_send_receive(server, params->msg);
 			if(msg_resposta == NULL){
 				//acabar thread ocorreu um erro
-				printf("secun off\n");
+				printf("problema no servidor secundario\n");
 				isSecondaryOn = FALSE;
+				params->msg = NULL;
 				params->threadResult = ERROR;
 			}else{
 				//acabou bem
@@ -671,11 +738,11 @@ void *threaded_send_receive(void *parametro){
 			pthread_mutex_unlock(&mutex);
 		}
 
-
+		printf("exiting thread\n");
 	return NULL;
 }
 
-struct server_t* linkToSecServer(){
+struct server_t* linkToSecServer(char* ip, char *port){
 	struct server_t *serverAux = (struct server_t*)malloc(sizeof(struct server_t));
 	
 	/* Verificar parâmetro da função e alocação de memória */
@@ -687,19 +754,8 @@ struct server_t* linkToSecServer(){
 		return NULL;
 	}
 
-	// // Separar os elementos da string, ip : porto	
-	// const char ip_port_seperator[2] = ":";
-	// char *ip, *port, *p;
-	// // adress_por é constante
-	// p = strdup(address_port);
-	// char *token = strtok(p, ip_port_seperator);
-	// ip = strdup(token);
-	// token = strtok(NULL, ip_port_seperator);
-	// port = strdup(token);
-	// free(p);
-	
 	//fixing inet addrs
-	int inet_res = inet_pton(AF_INET, ipSecundario, &(serverAux->addr->sin_addr));
+	int inet_res = inet_pton(AF_INET, ip, &(serverAux->addr->sin_addr));
 	if(inet_res == -1){
 		free(serverAux->addr);
 		free(serverAux);
@@ -712,7 +768,7 @@ struct server_t* linkToSecServer(){
 	}
 
 	// Porto	
-	serverAux->addr->sin_port = htons(atoi(portoSecundario));
+	serverAux->addr->sin_port = htons(atoi(port));
 	// Tipo
 	serverAux->addr->sin_family = AF_INET;
 	
@@ -736,9 +792,6 @@ struct server_t* linkToSecServer(){
 
 	/* Se a ligação não foi estabelecida, retornar NULL */
 	serverAux->socket = sockt;
-	if(portoSecundario != NULL){serverAux->porto = portoSecundario;}
-	if(ipSecundario != NULL){serverAux->ip = ipSecundario;}
-	isSecondaryOn = TRUE;
 	return serverAux;
 }
 
@@ -762,18 +815,16 @@ struct message_t *network_send_receive(struct server_t *server, struct message_t
 	*/
 	msg_size = htonl(message_size);
  	result = write_all(server->socket, (char *) &msg_size, _INT); //envia o size primeiro
- 	printf("enviou size...\n");
 	/* Verificar se o envio teve sucesso */
 	if(result != _INT){return NULL;}
 
 
 	/* Enviar a mensagem que foi previamente serializada */
-
 	result = write_all(server->socket, message_out, message_size);
-	printf("enviou...\n");
 
 	/* Verificar se o envio teve sucesso */
-	if(result != message_size){return NULL;} //enviar de novo?
+	if(result != message_size){
+		return NULL;} //enviar de numovo?
 
 	/* De seguida vamos receber a resposta do servidor:*/
 	/*		Com a função read_all, receber num inteiro o tamanho da 
@@ -791,8 +842,6 @@ struct message_t *network_send_receive(struct server_t *server, struct message_t
 	
 	result = read_all(server->socket, message_out, message_size);
 	if(result != message_size){
-
-		printf("erro no size 5");
 		free(message_out);
 		return NULL;
 	}

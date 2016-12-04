@@ -29,7 +29,7 @@ onde ip_port é o porto:ip do novo servidor primario e
 e file_name é o nome do ficheiro de log
 Retorna 0 em caso de sucesso, caso contrario -1
 */
-int write_log(char* ip_port, char* file_name);
+int write_log(char* file_name, char* ip_port);
 
 /*
 Le do ficheiro o ip_porto do servidor primario
