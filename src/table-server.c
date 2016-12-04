@@ -583,9 +583,9 @@ void divide_ip_port(char *address_port, char *ip_ret, char *port_ret){
 	// adress_por é constante
 	p = strdup(address_port);
 	char *token = strtok(p, ip_port_seperator);
-	ip_ret = strdup(token);
+	strcpy(ip_ret,token);
 	token = strtok(NULL, ip_port_seperator);
-	port_ret = strdup(token);
+	strcpy(port_ret, token);
 	free(p);
 }
 
@@ -593,19 +593,14 @@ void cluster_ip_port(char *ip_port_aux, char *ip_in, char *port_in){
 	//juntar o ip:port
 	char ip_port_seperator[2] = ":";
 	strcat(ip_port_aux, ip_in);
-	printf("%s\n",ip_port_aux );
 	strcat(ip_port_aux, ip_port_seperator);
-	printf("%s\n", ip_port_aux);
 	strcat(ip_port_aux, port_in);
 }
 int write_to_log(){
 	destroy_log(FILE_NAME); //não interessa se ERROR ou OK
-	printf("destroy log\n");
 	myIP = "127.0.0.1";
-	printf("my ip = %s , my port = %s\n", myIP, myPort );
-	char *toWrite = malloc(sizeof(LOG_LENGTH*3));
+	char *toWrite = malloc(LOG_LENGTH);
 	cluster_ip_port(toWrite, myIP, myPort);
-	printf("strcat ip port = %s\n", toWrite);
 	write_log(FILE_NAME, toWrite);
 }
 
@@ -629,7 +624,7 @@ int main(int argc, char **argv){
 
 
 		//tenta conectar com algum servidor primario
-		char *address_port = malloc(sizeof(LOG_LENGTH));
+		char *address_port = malloc(LOG_LENGTH);
 		result = read_log(FILE_NAME,address_port);
 		if(result == ERROR){
 			//ficheiro nao existe -> sou primario...
@@ -640,12 +635,15 @@ int main(int argc, char **argv){
 			if(result == ERROR){return ERROR;}		
 		}else{
 			printf("leu ficheiro\n");
-			char * ip;
-			char * port;
+			char * ip = malloc(16);
+			char * port = malloc(6);
 			divide_ip_port(address_port, ip, port);
+            printf("try linking to server ip = %s , port = %s , from = %s\n",ip,port, address_port);
 			struct server_t *serverAux = linkToSecServer(ip,port);
+            printf("fez link\n");
 			if(serverAux == NULL){
 				//inicializa servidor
+                printf("error conecting...\n");
 				write_to_log();
 				result = serverInit(myPort, listSize);
 				if(result == ERROR){return ERROR;}
@@ -656,7 +654,7 @@ int main(int argc, char **argv){
 			}
 		}
 
-
+        free(address_port);
 		subRoutine();
 
 	}else if(argc == 1){
@@ -667,7 +665,7 @@ int main(int argc, char **argv){
 		listSize = /*argv[2]*/ "10";
 
 		//tenta conectar com algum servidor primario
-		char *address_port = malloc(sizeof(LOG_LENGTH));
+		char *address_port = malloc(LOG_LENGTH);
 		result = read_log(FILE_NAME,address_port);
 		if(result == ERROR){
 			//ficheiro nao existe -> sou secundario..
@@ -675,8 +673,8 @@ int main(int argc, char **argv){
 			result = serverInit(myPort, listSize);
 			if(result == ERROR){return ERROR;}
 		}else{
-			char * ip;
-			char * port;
+			char * ip = malloc(16);
+			char * port = malloc(6);
 			divide_ip_port(address_port, ip, port);
 			struct server_t *serverAux = linkToSecServer(ip,port);
 			if(serverAux == NULL){
@@ -691,7 +689,7 @@ int main(int argc, char **argv){
 		}
 
 
-
+        free(address_port);
 
 		subRoutine();
 	}else{
