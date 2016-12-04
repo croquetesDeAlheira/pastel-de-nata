@@ -54,8 +54,11 @@ struct sockaddr_in client; // struct cliente
 socklen_t size_client; // size cliente
 int checkPoll; // check do poll , verificar se houve algo no poll
 struct server_t *server; //servidor
-char *portoSecundario;
-char *ipSecundario;
+char *myIP;
+char *secPort;
+char *secIP;
+char *myPort;
+char *listSize;
 int activeFDs = 0; //num de fds activos
 int close_conn; 
 int compress_list; //booleano representa se deve fazer compress da de socketsPoll
@@ -114,9 +117,9 @@ int read_log(char* file_name, char* ip_port_buffer) {
 	if (fd == NULL) {return ERROR;}
 
 	// Le o ficheiro para o apontador
+
 	fread(ip_port_buffer, 1, LOG_LENGTH, fd);
 	fclose(fd);
-
 	return OK;
 }
 
@@ -369,6 +372,17 @@ int network_receive_send(int sockfd){
 	}
 }
 
+void lancaThread(){
+	if(secPort == NULL || secIP == NULL){return;}
+	pthread_t thread;
+	long id = 1234;
+	int threadCreated = pthread_create(&thread, NULL, threaded_send_receive, NULL);
+	if (threadCreated){
+ 		printf("ERROR; return code from pthread_create() is %d\n", threadCreated);
+  		exit(ERROR);
+	}
+}
+
 int subRoutine(){
 	//Codigo de acordo com as normas da IBM
 	/*make a reusable listening socket*/
@@ -383,14 +397,7 @@ int subRoutine(){
 		}
 		//o primario ganha poder do mutex
 		pthread_mutex_lock(&mutex);
-					
-		pthread_t thread;
-		long id = 1234;
-		int threadCreated = pthread_create(&thread, NULL, threaded_send_receive, NULL);
-		if (threadCreated){
-     		printf("ERROR; return code from pthread_create() is %d\n", threadCreated);
-      		exit(ERROR);
-  		}
+		lancaThread();					
 
 
       	
@@ -521,7 +528,14 @@ int subRoutine(){
 									}
 								}
 		 					}else if(result == CHANGE_ROUTINE){
+		 						/* 1) mudar rotina para o primario
+								   2) deletar o log antigo (Se existir)
+								   3) criar um log novo com o meu ip:porto
+								   4) iniciar rotina */
+		 						printf("iniciar change routine\n");
 		 						isPrimary = TRUE;
+		 						write_to_log();
+		 						printf("fim CHANGE_ROUTINE\n");
 		 						subRoutine();
 		 					}
 
@@ -562,7 +576,7 @@ int serverInit(char *myPort, char *listSize){
 		return OK;
 }
 
-void devide_ip_port(char *address_port, char *ip_ret, char *port_ret){
+void divide_ip_port(char *address_port, char *ip_ret, char *port_ret){
 	// Separar os elementos da string, ip : porto	
 	const char ip_port_seperator[2] = ":";
 	char *p;
@@ -574,6 +588,28 @@ void devide_ip_port(char *address_port, char *ip_ret, char *port_ret){
 	port_ret = strdup(token);
 	free(p);
 }
+
+void cluster_ip_port(char *ip_port_aux, char *ip_in, char *port_in){
+	//juntar o ip:port
+	char ip_port_seperator[2] = ":";
+	strcat(ip_port_aux, ip_in);
+	printf("%s\n",ip_port_aux );
+	strcat(ip_port_aux, ip_port_seperator);
+	printf("%s\n", ip_port_aux);
+	strcat(ip_port_aux, port_in);
+}
+int write_to_log(){
+	destroy_log(FILE_NAME); //não interessa se ERROR ou OK
+	printf("destroy log\n");
+	myIP = "127.0.0.1";
+	printf("my ip = %s , my port = %s\n", myIP, myPort );
+	char *toWrite = malloc(sizeof(LOG_LENGTH*3));
+	cluster_ip_port(toWrite, myIP, myPort);
+	printf("strcat ip port = %s\n", toWrite);
+	write_log(FILE_NAME, toWrite);
+}
+
+
 int main(int argc, char **argv){
 	// caso seja pressionado o ctrl+c
 	 signal(SIGINT, finishserverAux);
@@ -586,48 +622,52 @@ int main(int argc, char **argv){
 		//primario deve ser 5 depois
 		isPrimary = TRUE;
 
-		char *myPort = /*argv[1]*/ "44901";
-		char *secIP = /*argv[2]*/ "127.0.0.1";
-		char *secPort = /*argv[3]*/ "44902";
-		char *listSize = /*argv[4]*/ "10";
+		myPort = /*argv[1]*/ "44901";
+		secIP = /*argv[2]*/ "127.0.0.1";
+		secPort = /*argv[3]*/ "44902";
+		listSize = /*argv[4]*/ "10";
 
 
 		//tenta conectar com algum servidor primario
-		char *address_port;
+		char *address_port = malloc(sizeof(LOG_LENGTH));
 		result = read_log(FILE_NAME,address_port);
 		if(result == ERROR){
 			//ficheiro nao existe -> sou primario...
 			//inicializa servidor
+			printf("nao leu ficheiro\n");
+			write_to_log();
 			result = serverInit(myPort, listSize);
-			if(result == ERROR){return ERROR;}
-			ipSecundario = secIP;
-			portoSecundario = secPort;
+			if(result == ERROR){return ERROR;}		
 		}else{
+			printf("leu ficheiro\n");
 			char * ip;
 			char * port;
-			devide_ip_port(address_port, ip, port);
+			divide_ip_port(address_port, ip, port);
 			struct server_t *serverAux = linkToSecServer(ip,port);
 			if(serverAux == NULL){
 				//inicializa servidor
+				write_to_log();
 				result = serverInit(myPort, listSize);
 				if(result == ERROR){return ERROR;}
-				ipSecundario = secIP;
-				portoSecundario = secPort;
 			}else{
 				//HELLO para pedir a tabela -> sou secundario
+				isPrimary = FALSE;
+				printf("HELLO\n");
 			}
 		}
+
+
 		subRoutine();
 
 	}else if(argc == 1){
 		//secundario
 		isPrimary = FALSE;
 
-		char *myPort = /*argv[1]*/ "44902";
-		char *listSize = /*argv[2]*/ "10";
+		myPort = /*argv[1]*/ "44902";
+		listSize = /*argv[2]*/ "10";
 
 		//tenta conectar com algum servidor primario
-		char *address_port;
+		char *address_port = malloc(sizeof(LOG_LENGTH));
 		result = read_log(FILE_NAME,address_port);
 		if(result == ERROR){
 			//ficheiro nao existe -> sou secundario..
@@ -637,14 +677,16 @@ int main(int argc, char **argv){
 		}else{
 			char * ip;
 			char * port;
-			devide_ip_port(address_port, ip, port);
+			divide_ip_port(address_port, ip, port);
 			struct server_t *serverAux = linkToSecServer(ip,port);
 			if(serverAux == NULL){
 				//inicializa servidor
+				destroy_log(FILE_NAME);
 				result = serverInit(myPort, listSize);
 				if(result == ERROR){return ERROR;}
 			}else{
 				//HELLO para pedir a tabela
+				printf("HELLO\n");
 			}
 		}
 
@@ -678,20 +720,20 @@ void *threaded_send_receive(void *parametro){
 			printf(">>>>>> turning server on <<<<<<\n");
 				if(server == NULL){
 				//criar servidor primeiro
-				server = linkToSecServer(ipSecundario,portoSecundario);
+				server = linkToSecServer(secIP,secPort);
 				if(server == NULL){
 					server = linkToSecServer();
 					if(server == NULL){
 						//destruir thread
 						return NULL;
 					}else{
-						server->porto = portoSecundario;
-						server->ip = ipSecundario;
+						server->porto = secPort;
+						server->ip = secIP;
 						isSecondaryOn = TRUE;
 					}
 				}else{
-					server->porto = portoSecundario;
-					server->ip = ipSecundario;
+					server->porto = secPort;
+					server->ip = secIP;
 					isSecondaryOn = TRUE;
 				}
 			}

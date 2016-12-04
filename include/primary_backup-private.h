@@ -45,5 +45,10 @@ int read_log(char* file_name, char* ip_port_buffer);
 int destroy_log(char* file_name);
 
 
+void devide_ip_port(char *address_port, char *ip_ret, char *port_ret);
+
+void cluster_ip_port(char *address_port, char *ip_in, char *port_in);
+
+int write_to_log();
 
 
