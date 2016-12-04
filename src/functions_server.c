@@ -11,7 +11,7 @@ int update(struct server_t *server) {
   int index;
   char** keys;
   char* key, *value;
-  char[2] all = "!";
+  char* all = "!";
   struct message_t *msg_out, *msg_all_keys, *msg_get, *msg_put;
 
   // Inicializa mensagem
@@ -20,7 +20,7 @@ int update(struct server_t *server) {
   // Cria a mensagem pedindo todas as keys
   msg_out->opcode = OC_GET;
   msg_out->c_type = CT_KEY;
-  msg_out->content.key = all;
+  msg_out->content.key = strdup(all);
   // Envia a msg e recebe a resposta
   msg_all_keys = invoke(msg_out);
 
@@ -77,6 +77,8 @@ int update(struct server_t *server) {
     free_message(msg_put);
     free_message(msg_get);
 
+    // Atualiza index 
+    index++;
   }
 
   // Liberta msgs que contem todas as keys
