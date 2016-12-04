@@ -1,0 +1,113 @@
+/*Possiveis funcoes a usar pelo table-server.c*/
+
+/*
+Recolhe todas as chaves existentes na tabela servidor primario
+Por cada chave, pede o seu valor e executa 
+a operacao PUT do respetivo par {chave, valor}
+na tabela do servidor secundario
+*/
+int update(struct server_t *server) {
+  // Argumentos
+  int index;
+  char** keys;
+  char* key, *value;
+  char[2] all = "!";
+  struct message_t *msg_out, *msg_all_keys, *msg_get, *msg_put;
+
+  // Inicializa mensagem
+  msg_out = (struct message_t*)malloc(sizeof(struct message_t));
+
+  // Cria a mensagem pedindo todas as keys
+  msg_out->opcode = OC_GET;
+  msg_out->c_type = CT_KEY;
+  msg_out->content.key = all;
+  // Envia a msg e recebe a resposta
+  msg_all_keys = invoke(msg_out);
+
+  // Liberta memoria
+  free_message(msg_out);
+
+  // Testa mensagem de resposta
+  if (msg_all_keys == NULL) {return ERROR;}
+
+  // Todas as chaves da tabela primario
+  keys = msg_all_keys ->content.keys = keys;
+
+  if (keys[0] == NULL) {return OK;}
+
+  // Elabora ciclo
+  index = 0;
+  while(keys[index] != NULL) {
+    key = keys[index];
+    // Por cada chave pede o respetivo valor associado
+    
+    // Prepara a msg GET
+    msg_out = (struct message_t*)malloc(sizeof(struct message_t));
+    if (msg_out == NULL) {return ERROR;}
+    
+    msg_out->opcode = OC_GET;
+    msg_out->c_type = CT_KEY;
+    msg_out->content.key = strdup(key);
+    // Envia amsg
+    msg_get = invoke(msg_out);
+    //  Liberta memoria
+    free_message(msg_out);
+    // Testa a msg
+    if (msg_get == NULL) {return ERROR;}
+
+    // Obtem valor
+    value = (char*)msg_get->content.data;
+
+    // Msg com pedido PUT
+    msg_out->opcode = OC_PUT;
+    msg_out->c_type = CT_ENTRY;
+    msg_out->content.entry = entry_create(key, value);
+
+    // ENVIA MSG A SERVIDOR SECUNDARIO
+    // FUNCAO QUE TENTA DUAS VEZES
+    msg_put = server_send_with_retry(server, msg_out);
+
+    // Liberta memoria
+    free_message(msg_out);
+
+    // Testa a msg
+    if (msg_put == NULL || msg_put->content.result == -1) {return ERROR;}
+
+    // Liberta memoria
+    free_message(msg_put);
+    free_message(msg_get);
+
+  }
+
+  // Liberta msgs que contem todas as keys
+  free_message(msg_all_keys):
+
+  // Correu tudo bem envia a confirmacao
+  return OK;  
+}
+
+/*
+Tenta duas vezes enviar uma mensagem
+Caso seja bem sucedido retorna mensagem de resposta
+Caso contrário retorna NULL
+*/
+struct message_t* server_send_with_retry (struct server_t *server, struct message_t *msg_out) {
+  struct message_t* msg_in;
+
+  // Testa argumentos
+  if (server == NULL) {return NULL;}
+
+  // 1st attempt
+  msg_in = network_send_receive(server, msg_out);
+
+  // Testa primeira tentativa
+  if (msg_in == NULL) {
+    // 2nd attempt
+    msg_in = network_send_receive(server, msg_out);
+
+    // Testa segunda tentativa
+    if (msg_in == NULL) {return NULL;}
+  }
+
+  return msg_in;
+}
