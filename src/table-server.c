@@ -396,6 +396,7 @@ int network_receive_send(int sockfd){
 }
 
 void lancaThread(){
+	printf("start lancaThread\n");
 	if(secPort == NULL || secIP == NULL){return;}
 	pthread_t thread;
 	long id = 1234;
@@ -404,6 +405,7 @@ void lancaThread(){
  		printf("ERROR; return code from pthread_create() is %d\n", threadCreated);
   		exit(ERROR);
 	}
+	printf("fim lancaThread\n");
 }
 
 int subRoutine(){
@@ -731,8 +733,6 @@ int main(int argc, char **argv){
 		if(result == ERROR){
 			//ficheiro nao existe -> sou primario...
 			//inicializa servidor
-			// Liberta memoria de adress_port
-			free(address_port);
 			printf("nao leu ficheiro\n");
 			write_to_log();
 			result = serverInit(myPort, listSize);
@@ -763,6 +763,7 @@ int main(int argc, char **argv){
 		}
 
         free(address_port);
+        printf("starting subRoutine\n");
 		subRoutine();
 
 	}else if(argc == 1){
