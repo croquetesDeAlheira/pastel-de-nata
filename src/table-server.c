@@ -79,7 +79,7 @@ struct thread_params *params;
 
 /********************************
 **
-**            METODOS
+**            METODOS LOG FILES
 **
 **********************************/
 
@@ -134,63 +134,30 @@ int destroy_log(char* file_name) {
 	// Resultado da operação
 	return remove(file_name);
 }
-
-
-void finishserverAux(int signal){
-    //close dos sockets
-    for (i = 0; i < numFds; i++){
-    	if(socketsPoll[i].fd >= 0){
-     		close(socketsPoll[i].fd);
-     	}
- 	}
-	table_skel_destroy();
-	if(isPrimary)
-		destroy_log(FILE_NAME);
-	printf("\n :::: -> SERVIDOR ENCERRADO <- :::: \n");
-	exit(0);
-}
-
-
-/* Função para preparar uma socket de receção de pedidos de ligação.
+/**
+*	WRITE TO LOG IP AND PORT
 */
-int make_serverAux_socket(short port){
-  int socket_fd;
-  int rc, on = 1;
-  struct sockaddr_in serverAux;
-
-  if ((socket_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
-    perror("Erro ao criar socket");
-    return -1;
-  }
-
-  //make it reusable
-  rc = setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, (char *)&on, sizeof(on));
-  if(rc < 0 ){
-  	perror("erro no setsockopt");
-  	close(socket_fd);
-  	return ERROR;
-  }
-
-  serverAux.sin_family = AF_INET;
-  serverAux.sin_port = htons(port);  
-  serverAux.sin_addr.s_addr = htonl(INADDR_ANY);
-
-
-
-  if (bind(socket_fd, (struct sockaddr *) &serverAux, sizeof(serverAux)) < 0){
-      perror("Erro ao fazer bind");
-      close(socket_fd);
-      return -1;
-  }
-
-  //o segundo argumento talvez nao deva ser 0, para poder aceitar varios FD's
-  if (listen(socket_fd, 0) < 0){
-      perror("Erro ao executar listen");
-      close(socket_fd);
-      return -1;
-  }
-  return socket_fd;
+int write_to_log(){
+	int result; // Devolver resultado do write_log
+	destroy_log(FILE_NAME); //não interessa se ERROR ou OK
+	myIP = "127.0.0.1";
+	char *toWrite = malloc(LOG_LENGTH);
+	cluster_ip_port(toWrite, myIP, myPort);
+	// Escreve no ficheiro
+	result = write_log(FILE_NAME, toWrite);
+	
+	// Libertar memoria do toWrite
+	free(toWrite);
+	
+	// Devolve resultado
+	return result;
 }
+
+/************************************************
+**
+**            METODOS WRITE AND READ FROM SOCKET
+**
+*************************************************/
 /* Função que garante o envio de len bytes armazenados em buf,
    através da socket sock.
 */
@@ -233,6 +200,119 @@ int read_all(int sock, char *buf, int len){
 	}
 	return bufsize;
 }
+
+
+
+
+/************************************************
+**
+**            METODOS AUXILIARES 
+**				ENTRE PRIMARIO E SECUNDARIO
+**
+**
+*************************************************/
+void divide_ip_port(char *address_port, char *ip_ret, char *port_ret){
+	// Separar os elementos da string, ip : porto	
+	const char ip_port_seperator[2] = ":";
+	char *p;
+	// adress_por é constante
+	p = strdup(address_port);
+	char *token = strtok(p, ip_port_seperator);
+	strcpy(ip_ret,token);
+	token = strtok(NULL, ip_port_seperator);
+	strcpy(port_ret, token);
+	free(p);
+}
+
+void cluster_ip_port(char *ip_port_aux, char *ip_in, char *port_in){
+	//juntar o ip:port
+	char ip_port_seperator[2] = ":";
+	strcat(ip_port_aux, ip_in);
+	strcat(ip_port_aux, ip_port_seperator);
+	strcat(ip_port_aux, port_in);
+}
+
+void finishserverAux(int signal){
+    //close dos sockets
+    for (i = 0; i < numFds; i++){
+    	if(socketsPoll[i].fd >= 0){
+     		close(socketsPoll[i].fd);
+     	}
+ 	}
+	table_skel_destroy();
+
+	if(isPrimary)
+		destroy_log(FILE_NAME);
+	printf("\n :::: -> SERVIDOR ENCERRADO <- :::: \n");
+	exit(0);
+}
+
+int serverInit(char *myPort, char *listSize){
+	listening_socket = make_server_socket(atoi(myPort));
+	//check if done right
+	if(listening_socket < 0){return -1;}
+	
+	/* initialize table */
+	if(table_skel_init(atoi(listSize)) == ERROR){ 
+		close(listening_socket); 
+		return ERROR;
+	}
+	//inicializa todos os clientes com 0
+	memset(socketsPoll, 0 , sizeof(socketsPoll));
+	//o primeiro elem deve ser o listening
+	socketsPoll[0].fd = listening_socket;
+	socketsPoll[0].events = POLLIN;
+
+	//o segundo elem deve ser o stdin (para capturar o "print")
+	stdin_fd = STDIN_FILENO;
+	socketsPoll[1].fd = stdin_fd;
+	socketsPoll[1].events = POLLIN;
+	return OK;
+}
+
+/* Função para preparar uma socket de receção de pedidos de ligação.
+*/
+int make_server_socket(short port){
+  int socket_fd;
+  int rc, on = 1;
+  struct sockaddr_in serverAux;
+
+  if ((socket_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
+    perror("Erro ao criar socket");
+    return -1;
+  }
+
+  //make it reusable
+  rc = setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, (char *)&on, sizeof(on));
+  if(rc < 0 ){
+  	perror("erro no setsockopt");
+  	close(socket_fd);
+  	return ERROR;
+  }
+
+  serverAux.sin_family = AF_INET;
+  serverAux.sin_port = htons(port);  
+  serverAux.sin_addr.s_addr = htonl(INADDR_ANY);
+
+
+
+  if (bind(socket_fd, (struct sockaddr *) &serverAux, sizeof(serverAux)) < 0){
+      perror("Erro ao fazer bind");
+      close(socket_fd);
+      return -1;
+  }
+
+  //o segundo argumento talvez nao deva ser 0, para poder aceitar varios FD's
+  if (listen(socket_fd, 0) < 0){
+      perror("Erro ao executar listen");
+      close(socket_fd);
+      return -1;
+  }
+  return socket_fd;
+}
+
+
+
 /* Função "inversa" da função network_send_receive usada no table-client.
    Neste caso a função implementa um ciclo receive/send:
 
@@ -274,6 +354,9 @@ int network_receive_send(int sockfd){
 	if(isPrimary){
 		if(msg_pedido->opcode == OC_HELLO){
 			hello = TRUE;
+			printf("%d\n", msg_pedido->content.result);
+			secPort = malloc(6);
+			sprintf(secPort, "%d", msg_pedido->content.result);
 			printf("secundario fez pedido hello\n");
 		}
 	}
@@ -321,7 +404,7 @@ int network_receive_send(int sockfd){
 	caso seja primario , verificar se opcode
 	faz alteracoes na tabela,
 	se sim, enviar para o secundario */
-	if(isPrimary){ //DEPOIS DO INVOKE
+	if(isPrimary  && !hello){ //DEPOIS DO INVOKE
 		//ja temos o opcode
 		int opcode = msg_pedido->opcode;
 		//verificar & se for algum, mudar o opcode da mensage
@@ -395,19 +478,6 @@ int network_receive_send(int sockfd){
 	
 }
 
-void lancaThread(){
-	printf("start lancaThread\n");
-	if(secPort == NULL || secIP == NULL){return;}
-	pthread_t thread;
-	long id = 1234;
-	int threadCreated = pthread_create(&thread, NULL, threaded_send_receive, NULL);
-	if (threadCreated){
- 		printf("ERROR; return code from pthread_create() is %d\n", threadCreated);
-  		exit(ERROR);
-	}
-	printf("fim lancaThread\n");
-}
-
 int subRoutine(){
 	//Codigo de acordo com as normas da IBM
 	/*make a reusable listening socket*/
@@ -431,8 +501,9 @@ int subRoutine(){
 	}
 	//call poll and check
 	while(serverAux_on){ //while no cntrl c
+		printf("start serveron\n");
 		while((checkPoll = poll(socketsPoll, numFds, TIMEOUT)) >= 0){
-
+			printf("start polling cicle\n");
 			//verifica se nao houve evento em nenhum socket
 			if(checkPoll == 0){
 				perror("timeout expired on poll()");
@@ -446,6 +517,7 @@ int subRoutine(){
 					//se houve temos de ver se foi POLLIN
 					if(socketsPoll[i].revents != POLLIN){
      					printf("  Error! revents = %d\n", socketsPoll[i].revents);
+   
        					break;
      				}
 
@@ -563,60 +635,64 @@ int subRoutine(){
 		 						printf("fim CHANGE_ROUTINE\n");
 		 						subRoutine();
 		 					}else if(result == HELLO){
-		 						//um secundario acordou e enviou hello
-   								struct sockaddr_in sa;
-   								int sa_len;
-   								/* We must put the length in a variable.              */
-								sa_len = sizeof(sa);
-							    /* Ask getsockname to fill in this socket's local     */
-							    /* address.                                           */
-								if (getsockname(socketsPoll[i].fd,(struct sockaddr *)&sa, &sa_len) == -1) {
-							    	perror("getsockname() failed");  
-							    	return -1;
-							   	}
+		 					// 	//um secundario acordou e enviou hello
+   					// 			struct sockaddr_in sa;
+   					// 			int sa_len;
+   					// 			/* We must put the length in a variable.              */
+								// sa_len = sizeof(sa);
+							 //    /* Ask getsockname to fill in this socket's local     */
+							 //    /* address.                                           */
+								// if (getsockname(socketsPoll[i].fd,(struct sockaddr *)&sa, &sa_len) == -1) {
+							 //    	perror("getsockname() failed");  
+							 //    	return -1;
+							 //   	}
 
-							    /* Print it. The IP address is often zero beacuase    */
-							    /* sockets are seldom bound to a specific local       */
-							    /* interface.                                         */
-							    char * ipstrr = inet_ntoa(sa.sin_addr);
-								char porto[6];
-							    int port = ntohs(sa.sin_port);
-							    sprintf(porto, "%d", port);
-							   	printf("Local IP address is: %s\n", ipstrr);
-							   	printf("Local port is: %d\n", (int) ntohs(sa.sin_port));
-								printf("my port = %s\n", porto);
+							 //     Print it. The IP address is often zero beacuase    
+							 //    /* sockets are seldom bound to a specific local       */
+							 //    /* interface.                                         */
+							 //    char * ipstrr = inet_ntoa(sa.sin_addr);
+								// char porto[6];
+							 //    int port = ntohs(sa.sin_port);
+							 //    sprintf(porto, "%d", port);
+							 //   	printf("Local IP address is: %s\n", ipstrr);
+							 //   	printf("Local port is: %d\n", (int) ntohs(sa.sin_port));
+								// printf("my port = %s\n", porto);
 
 
-								socklen_t len;
-								struct sockaddr_storage addr;
-								char ipstr[INET6_ADDRSTRLEN];
+								// socklen_t len;
+								// struct sockaddr_storage addr;
+								// char ipstr[INET6_ADDRSTRLEN];
 								
 
-								len = sizeof(addr);
-								getpeername(socketsPoll[i].fd, (struct sockaddr*)&addr, &len);
+								// len = sizeof(addr);
+								// getpeername(socketsPoll[i].fd, (struct sockaddr*)&addr, &len);
 
-								// deal with both IPv4 and IPv6:
-								if (addr.ss_family == AF_INET) {
-									struct sockaddr_in *s = (struct sockaddr_in *)&addr;
-									port = ntohs(s->sin_port);
-									inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof ipstr);
-								} else { // AF_INET6
-									struct sockaddr_in6 *s = (struct sockaddr_in6 *)&addr;
-									port = ntohs(s->sin6_port);
-									inet_ntop(AF_INET6, &s->sin6_addr, ipstr, sizeof ipstr);
-								}
+								// // deal with both IPv4 and IPv6:
+								// if (addr.ss_family == AF_INET) {
+								// 	struct sockaddr_in *s = (struct sockaddr_in *)&addr;
+								// 	port = ntohs(s->sin_port);
+								// 	inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof ipstr);
+								// } else { // AF_INET6
+								// 	struct sockaddr_in6 *s = (struct sockaddr_in6 *)&addr;
+								// 	port = ntohs(s->sin6_port);
+								// 	inet_ntop(AF_INET6, &s->sin6_addr, ipstr, sizeof ipstr);
+								// }
 
-								printf("Peer IP address: %s\n", ipstr);
-								printf("Peer port      : %d\n", port);
+								// printf("Peer IP address: %s\n", ipstr);
+								// printf("Peer port      : %d\n", port);
 
+		 						//HARD CODED
+		 						sleep(3);
+		 						secIP = "127.0.0.1";		 						
+		 						int result = hello(server);
+		 						
+		 					// 	server = linkToSecServer("127.0.0.1" , "44902");
+								// if(server == NULL){
+								// 	printf("error connecting to secundario server\n");
+								// }
+		 						if(result == OK){
 
-								struct server_t *serverSecundary = linkToSecServer(ipstr,secPort);
-								if(serverSecundary == NULL){
-									printf("error connecting to secundario server\n");
-								}
-
-
-		 						//int result = hello();
+		 						}
 		 					}
 
 						}//Fim do else de outros fd's
@@ -630,82 +706,23 @@ int subRoutine(){
 	return OK;
 }
 
-
-
-
-int serverInit(char *myPort, char *listSize){
-		listening_socket = make_serverAux_socket(atoi(myPort));
-		//check if done right
-		if(listening_socket < 0){return -1;}
-		
-		/* initialize table */
-		if(table_skel_init(atoi(listSize)) == ERROR){ 
-			close(listening_socket); 
-			return ERROR;
-		}
-		//inicializa todos os clientes com 0
-		memset(socketsPoll, 0 , sizeof(socketsPoll));
-		//o primeiro elem deve ser o listening
-		socketsPoll[0].fd = listening_socket;
-		socketsPoll[0].events = POLLIN;
-
-		//o segundo elem deve ser o stdin (para capturar o "print")
-		stdin_fd = STDIN_FILENO;
-		socketsPoll[1].fd = stdin_fd;
-		socketsPoll[1].events = POLLIN;
-		return OK;
-}
-
-void divide_ip_port(char *address_port, char *ip_ret, char *port_ret){
-	// Separar os elementos da string, ip : porto	
-	const char ip_port_seperator[2] = ":";
-	char *p;
-	// adress_por é constante
-	p = strdup(address_port);
-	char *token = strtok(p, ip_port_seperator);
-	strcpy(ip_ret,token);
-	token = strtok(NULL, ip_port_seperator);
-	strcpy(port_ret, token);
-	free(p);
-}
-
-void cluster_ip_port(char *ip_port_aux, char *ip_in, char *port_in){
-	//juntar o ip:port
-	char ip_port_seperator[2] = ":";
-	strcat(ip_port_aux, ip_in);
-	strcat(ip_port_aux, ip_port_seperator);
-	strcat(ip_port_aux, port_in);
-}
-int write_to_log(){
-	int result; // Devolver resultado do write_log
-	destroy_log(FILE_NAME); //não interessa se ERROR ou OK
-	myIP = "127.0.0.1";
-	char *toWrite = malloc(LOG_LENGTH);
-	cluster_ip_port(toWrite, myIP, myPort);
-	// Escreve no ficheiro
-	result = write_log(FILE_NAME, toWrite);
-	
-	// Libertar memoria do toWrite
-	free(toWrite);
-	
-	// Devolve resultado
-	return result;
-}
-
 int make_and_send_hello(struct server_t *serverAux){
+	printf("send hello\n");
 	struct message_t *hello = (struct message_t *) malloc(sizeof(struct message_t));
 	if(hello == NULL){exit(ERROR);}
 	hello->opcode = OC_HELLO;
 	hello->c_type = CT_RESULT;
-	hello->content.result = OK;
+	hello->content.result = atoi(myPort);
 	struct message_t *resp = network_send_receive(serverAux, hello);
 	if(resp == NULL){
 		free(hello);
+		printf("erro send hello\n");
 		//exit(ERROR);
 	}else if(resp->content.result != OK){
 		//exit(ERROR);
 	}
 	//considerar que correu tudo bem, agr vou ficar a espera
+	printf("fin send hello\n");
 	return OK;
 }
 
@@ -756,6 +773,8 @@ int main(int argc, char **argv){
 				isPrimary = FALSE;
 				if(make_and_send_hello(serverAux) == OK){
 					printf("HELLO\n");
+					result = serverInit(myPort, listSize);
+					if(result == ERROR){return ERROR;}
 				}else{
 					exit(ERROR);
 				}
@@ -786,16 +805,23 @@ int main(int argc, char **argv){
 			char * port = malloc(6);
 			divide_ip_port(address_port, ip, port);
 			struct server_t *serverAux = linkToSecServer(ip,port);
+			free(ip);
+			free(port);
+
 			if(serverAux == NULL){
 				//inicializa servidor
 				destroy_log(FILE_NAME);
 				result = serverInit(myPort, listSize);
 				if(result == ERROR){return ERROR;}
+
 			}else{
 				//HELLO para pedir a tabela
 				int result = make_and_send_hello(serverAux);
+				printf("my port %s\n", myPort);
 				if(result == OK){
 					printf("HELLO\n");
+					result = serverInit(myPort, listSize);
+					if(result == ERROR){return ERROR;}
 				}else{
 					exit(ERROR);
 				}
@@ -804,7 +830,7 @@ int main(int argc, char **argv){
 
 
         free(address_port);
-
+       	printf("start sub rotina\n");
 		subRoutine();
 	}else{
 		//errou
@@ -821,11 +847,24 @@ int main(int argc, char **argv){
 
 
 
-/********************************
+/*********************************************
 **
 **  METODOS UTILIZADOS PELA THREAD
 **
 **********************************/
+void lancaThread(){
+	printf("start lancaThread\n");
+	if(secPort == NULL || secIP == NULL){return;}
+	pthread_t thread;
+	long id = 1234;
+	int threadCreated = pthread_create(&thread, NULL, threaded_send_receive, NULL);
+	if (threadCreated){
+ 		printf("ERROR; return code from pthread_create() is %d\n", threadCreated);
+  		exit(ERROR);
+	}
+	printf("fim lancaThread\n");
+}
+
 void *threaded_send_receive(void *parametro){
 	printf("thread started\n");
 		if(!isSecondaryOn){
@@ -900,11 +939,14 @@ struct server_t*linkToSecServer(char* ip, char *port){
 	struct server_t *serverAux = (struct server_t*)malloc(sizeof(struct server_t));
 	
 	/* Verificar parâmetro da função e alocação de memória */
-	if(serverAux == NULL){ return NULL; }
+	if(serverAux == NULL){ 
+		printf("server aux is null\n");
+		return NULL; }
 	/* allocar a memoria do addrs dentro do serverAux*/
 	serverAux->addr = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
 	if(serverAux->addr == NULL){
 		free(serverAux);
+		printf("server addr is null\n");
 		return NULL;
 	}
 
@@ -1016,3 +1058,177 @@ struct message_t *network_send_receive(struct server_t *server, struct message_t
 	return msg_resposta;
 }
 
+/*Função usada para um servidor avisar o servidor "server" de que
+ já acordou. Retorna 0 em caso de sucesso, -1 em caso de insucesso*/
+ int hello(struct server_t *server){
+ 	lancaThread();
+ 	return update_state(server);
+ }
+
+
+/*
+Pede atualização de estado do server
+Retorna 0 em caso de sucesso e -1 em caso de insucesso
+Recolhe todas as chaves existentes na tabela servidor primario
+Por cada chave, pede o seu valor e executa 
+a operacao PUT do respetivo par {chave, valor}
+na tabela do servidor secundario
+*/
+int update_state(struct server_t *server) {
+  // Argumentos
+  int index;
+  char** keys;
+  char* key;
+  struct data_t* value;
+  char* all = "!";
+  struct message_t *msg_out, *msg_all_keys, *msg_get, *msg_put;
+
+  // Inicializa mensagem
+  msg_out = (struct message_t*)malloc(sizeof(struct message_t));
+  // Verifica mensagem
+  if (msg_out == NULL) {return ERROR;}
+
+  // Cria a mensagem pedindo todas as keys
+  msg_out->opcode = OC_GET;
+  msg_out->c_type = CT_KEY;
+  msg_out->content.key = strdup(all);
+  // Envia a msg e recebe a resposta
+  msg_all_keys = invoke(msg_out);
+
+  // Liberta memoria
+  free_message(msg_out);
+
+  // Testa mensagem de resposta
+  if (msg_all_keys == NULL) {return ERROR;}
+
+  // Todas as chaves da tabela primario
+  keys = msg_all_keys->content.keys;
+
+  if (keys[0] == NULL) {
+    free_message(msg_all_keys);
+    return OK;
+  }
+
+  // Elabora ciclo
+  // Corre as chaves
+  // Para cada chave faz o get do valor associado
+  // Para cada par {chave, valor} envia msg de PUT
+  // para servidor secundario
+  index = 0;
+  while(keys[index] != NULL) {
+    key = keys[index];
+    // Por cada chave pede o respetivo valor associado
+    
+    // Prepara a msg GET
+    msg_out = (struct message_t*)malloc(sizeof(struct message_t));
+    if (msg_out == NULL) {
+      free_message(msg_all_keys);
+      return ERROR;
+    }
+    
+    msg_out->opcode = OC_GET;
+    msg_out->c_type = CT_KEY;
+    msg_out->content.key = strdup(key);
+    // Envia amsg
+    msg_get = invoke(msg_out);
+    //  Liberta memoria
+    free_message(msg_out);
+    // Testa a msg
+    if (msg_get == NULL) {
+      free_message(msg_all_keys);
+      return ERROR;
+    }
+
+    // Obtem valor
+    value = msg_get->content.data;
+
+    // Msg com pedido PUT
+    msg_out = (struct message_t*)malloc(sizeof(struct message_t));
+    if (msg_out == NULL) {
+      free_message(msg_get);
+      free_message(msg_all_keys);
+      return ERROR;
+    }
+    // Compoe a msg PUT
+    msg_out->opcode = OC_PUT;
+    msg_out->c_type = CT_ENTRY;
+    msg_out->content.entry = entry_create(key, value);
+
+    // ENVIA MSG A SERVIDOR SECUNDARIO
+    // FUNCAO QUE TENTA DUAS VEZES
+    result = server_send_with_retry(server, msg_out);
+
+    // Liberta memoria
+    free_message(msg_out);
+
+    // Testa msg
+    if (result == ERROR) {
+      free_message(msg_get);
+      free_message(msg_all_keys);
+      return ERROR;
+    }
+
+    // Liberta memoria
+    free_message(msg_put);
+    free_message(msg_get);
+
+    // Atualiza index 
+    index++;
+  }
+
+  // Liberta msgs que contem todas as keys
+  free_message(msg_all_keys);
+
+  // Correu tudo bem envia a confirmacao
+  return OK;  
+}
+
+/*
+Tenta duas vezes enviar uma mensagem
+Caso seja bem sucedido retorna mensagem de resposta
+Caso contrário retorna NULL
+*/
+int server_send_with_retry (struct server_t *server, struct message_t *msg_out) {
+	struct message_t* msg_in;
+
+	// Testa argumentos
+	if (server == NULL) {return ERROR;}
+
+	printf("enviar para o secundario\n");
+
+	params->msg = msg_out;
+	dadosProntos = ERROR;
+	pthread_cond_signal(&dados_para_enviar);
+	pthread_mutex_unlock(&mutex);
+	//receber resultado
+	// void *threadRetun;pthread_join(thread, NULL);
+	// printf(" char = %s\n", (char *) &(*threadRetun) );
+	// int resultThread = atoi((char *)&threadRetun)
+	while(dadosProntos != OK){}
+	pthread_mutex_lock(&mutex);
+	if(params->threadResult = ERROR && params->msg == NULL){
+		//é pq o secundario desconectou
+		printf("SECUNDARIO OFFLINE\n");
+		return ERROR;
+
+	}else if(params->threadResult == ERROR){
+		//enviar novamente
+		dadosProntos = ERROR;
+		pthread_cond_signal(&dados_para_enviar);
+		pthread_mutex_unlock(&mutex);
+		//receber resultado
+		// void *threadRetun;pthread_join(thread, NULL);
+		// printf(" char = %s\n", (char *) &(*threadRetun) );
+		// int resultThread = atoi((char *)&threadRetun)
+		while(dadosProntos != OK){}
+		pthread_mutex_lock(&mutex);
+		if(params->threadResult = ERROR && params->msg == NULL){
+			//é pq o secundario desconectou
+			printf("SECUNDARIO OFFLINE\n");
+		}else if(params->threadResult == ERROR){
+			return ERROR;
+		}else{
+			return OK;
+		}
+	}
+}

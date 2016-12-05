@@ -52,3 +52,32 @@ void cluster_ip_port(char *address_port, char *ip_in, char *port_in);
 int write_to_log();
 
 
+int write_all(int sock, char *buf, int len);
+
+
+int read_all(int sock, char *buf, int len);
+
+void divide_ip_port(char *address_port, char *ip_ret, char *port_ret);
+
+void cluster_ip_port(char *ip_port_aux, char *ip_in, char *port_in);
+
+void finishserverAux(int signal);
+
+int serverInit(char *myPort, char *listSize);
+
+int make_server_socket(short port);
+
+int network_receive_send(int sockfd);
+
+int subRoutine();
+
+int make_and_send_hello(struct server_t *serverAux);
+
+void lancaThread();
+
+
+int server_send_with_retry (struct server_t *server, struct message_t *msg_out);
+
+
+
+
