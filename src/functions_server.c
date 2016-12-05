@@ -10,7 +10,8 @@ int update(struct server_t *server) {
   // Argumentos
   int index;
   char** keys;
-  char* key, *value;
+  char* key;
+  data_t* value;
   char* all = "!";
   struct message_t *msg_out, *msg_all_keys, *msg_get, *msg_put;
 
@@ -65,7 +66,7 @@ int update(struct server_t *server) {
     }
 
     // Obtem valor
-    value = (char*)msg_get->content.data;
+    value = msg_get->content.data;
 
     // Msg com pedido PUT
     msg_out = (struct message_t*)malloc(sizeof(struct message_t));
