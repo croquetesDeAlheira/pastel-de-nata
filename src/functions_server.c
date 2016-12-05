@@ -1,12 +1,14 @@
 /*Possiveis funcoes a usar pelo table-server.c*/
 
 /*
+Pede atualização de estado do server
+Retorna 0 em caso de sucesso e -1 em caso de insucesso
 Recolhe todas as chaves existentes na tabela servidor primario
 Por cada chave, pede o seu valor e executa 
 a operacao PUT do respetivo par {chave, valor}
 na tabela do servidor secundario
 */
-int update(struct server_t *server) {
+int update_state(struct server_t *server) {
   // Argumentos
   int index;
   char** keys;
@@ -17,6 +19,8 @@ int update(struct server_t *server) {
 
   // Inicializa mensagem
   msg_out = (struct message_t*)malloc(sizeof(struct message_t));
+  // Verifica mensagem
+  if (msg_out == NULL) {return ERROR;}
 
   // Cria a mensagem pedindo todas as keys
   msg_out->opcode = OC_GET;
@@ -40,6 +44,10 @@ int update(struct server_t *server) {
   }
 
   // Elabora ciclo
+  // Corre as chaves
+  // Para cada chave faz o get do valor associado
+  // Para cada par {chave, valor} envia msg de PUT
+  // para servidor secundario
   index = 0;
   while(keys[index] != NULL) {
     key = keys[index];
@@ -75,7 +83,7 @@ int update(struct server_t *server) {
       free_message(msg_all_keys);
       return ERROR;
     }
-
+    // Compoe a msg PUT
     msg_out->opcode = OC_PUT;
     msg_out->c_type = CT_ENTRY;
     msg_out->content.entry = entry_create(key, value);
@@ -87,10 +95,18 @@ int update(struct server_t *server) {
     // Liberta memoria
     free_message(msg_out);
 
-    // Testa a msg
-    if (msg_put == NULL || msg_put->content.result == -1) {
+    // Testa msg
+    if (msg_put == NULL) {
       free_message(msg_get);
-      free_message(msg_all_keys):
+      free_message(msg_all_keys);
+      return ERROR;
+    }
+
+    // Testa resultado da operacao PUT
+    if (msg_put->content.result == -1) {
+      free_message(msg_put);
+      free_message(msg_get);
+      free_message(msg_all_keys);
       return ERROR;
     }
 
@@ -103,7 +119,7 @@ int update(struct server_t *server) {
   }
 
   // Liberta msgs que contem todas as keys
-  free_message(msg_all_keys):
+  free_message(msg_all_keys);
 
   // Correu tudo bem envia a confirmacao
   return OK;  
