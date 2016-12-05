@@ -11,7 +11,7 @@ int update(struct server_t *server) {
   int index;
   char** keys;
   char* key;
-  data_t* value;
+  struct data_t* value;
   char* all = "!";
   struct message_t *msg_out, *msg_all_keys, *msg_get, *msg_put;
 
@@ -32,7 +32,7 @@ int update(struct server_t *server) {
   if (msg_all_keys == NULL) {return ERROR;}
 
   // Todas as chaves da tabela primario
-  keys = msg_all_keys ->content.keys = keys;
+  keys = msg_all_keys->content.keys;
 
   if (keys[0] == NULL) {
     free_message(msg_all_keys);
