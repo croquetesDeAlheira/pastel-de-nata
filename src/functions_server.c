@@ -33,7 +33,10 @@ int update(struct server_t *server) {
   // Todas as chaves da tabela primario
   keys = msg_all_keys ->content.keys = keys;
 
-  if (keys[0] == NULL) {return OK;}
+  if (keys[0] == NULL) {
+    free_message(msg_all_keys);
+    return OK;
+  }
 
   // Elabora ciclo
   index = 0;
@@ -43,7 +46,10 @@ int update(struct server_t *server) {
     
     // Prepara a msg GET
     msg_out = (struct message_t*)malloc(sizeof(struct message_t));
-    if (msg_out == NULL) {return ERROR;}
+    if (msg_out == NULL) {
+      free_message(msg_all_keys);
+      return ERROR;
+    }
     
     msg_out->opcode = OC_GET;
     msg_out->c_type = CT_KEY;
@@ -53,12 +59,22 @@ int update(struct server_t *server) {
     //  Liberta memoria
     free_message(msg_out);
     // Testa a msg
-    if (msg_get == NULL) {return ERROR;}
+    if (msg_get == NULL) {
+      free_message(msg_all_keys);
+      return ERROR;
+    }
 
     // Obtem valor
     value = (char*)msg_get->content.data;
 
     // Msg com pedido PUT
+    msg_out = (struct message_t*)malloc(sizeof(struct message_t));
+    if (msg_out == NULL) {
+      free_message(msg_get);
+      free_message(msg_all_keys);
+      return ERROR;
+    }
+
     msg_out->opcode = OC_PUT;
     msg_out->c_type = CT_ENTRY;
     msg_out->content.entry = entry_create(key, value);
@@ -71,7 +87,11 @@ int update(struct server_t *server) {
     free_message(msg_out);
 
     // Testa a msg
-    if (msg_put == NULL || msg_put->content.result == -1) {return ERROR;}
+    if (msg_put == NULL || msg_put->content.result == -1) {
+      free_message(msg_get);
+      free_message(msg_all_keys):
+      return ERROR;
+    }
 
     // Liberta memoria
     free_message(msg_put);
