@@ -16,7 +16,8 @@
 // Códigos da mensagem entre servidores
 #define OC_DEL_S	200
 #define OC_UPDATE_S   	300
-#define OC_PUT_S	500
+#define OC_PUT_S	400
+#define OC_HELLO 500
 
 //#include "table-private.h" /* For table_free_keys() */
 #include "message.h"

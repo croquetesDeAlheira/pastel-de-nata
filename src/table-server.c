@@ -17,6 +17,7 @@
 #include <sys/socket.h>
 #include <signal.h>
 #include <stdio.h>
+#include <sys/types.h>
 #include <pthread.h>
 
 
@@ -29,6 +30,7 @@
 #define ERROR -1
 #define OK 0
 #define CHANGE_ROUTINE 1
+#define HELLO 2
 #define TRUE 1 // boolean true
 #define FALSE 0 // boolean false
 #define NCLIENTS 10 // Número de sockets (uma para listening e uma para o stdin)
@@ -142,6 +144,8 @@ void finishserverAux(int signal){
      	}
  	}
 	table_skel_destroy();
+	if(isPrimary)
+		destroy_log(FILE_NAME);
 	printf("\n :::: -> SERVIDOR ENCERRADO <- :::: \n");
 	exit(0);
 }
@@ -242,6 +246,7 @@ int network_receive_send(int sockfd){
 	int message_size, msg_size, result;
 	struct message_t *msg_pedido, *msg_resposta;
 	int changeRoutine = FALSE;
+	int hello = FALSE;
 
 	/* Com a função read_all, receber num inteiro o tamanho da 
 	   mensagem de pedido que será recebida de seguida.*/
@@ -265,6 +270,13 @@ int network_receive_send(int sockfd){
 	/* Verificar se a desserialização teve sucesso */
 	if(msg_pedido == NULL){return ERROR;}
 
+	//check if secundario acordou
+	if(isPrimary){
+		if(msg_pedido->opcode == OC_HELLO){
+			hello = TRUE;
+			printf("secundario fez pedido hello\n");
+		}
+	}
 
 	/* caso seja secundario, antes de meter na tabela devemos
 		alterar o opcode da msg para um que a tabela perceba
@@ -290,11 +302,20 @@ int network_receive_send(int sockfd){
 		}//se nao mudou, simplesmente continua...
 	}
 	/* Processar a mensagem */
-	msg_resposta = invoke(msg_pedido);
-
-	if(msg_resposta == NULL){ // erro no invoke
-		return ERROR;
+	if(!hello){
+		msg_resposta = invoke(msg_pedido);
+		if(msg_resposta == NULL){ // erro no invoke
+			return ERROR;
+		}
+	}else{
+		printf("construir msg secundario hello\n");
+		msg_resposta = (struct message_t *)malloc(sizeof(struct message_t));
+		if(msg_resposta == NULL){return ERROR;}
+		msg_resposta->opcode = OC_HELLO;
+		msg_resposta->c_type = CT_RESULT;
+		msg_resposta->content.result = OK;
 	}
+
 
 	/* verificar se somos primario ou secundario
 	caso seja primario , verificar se opcode
@@ -337,8 +358,6 @@ int network_receive_send(int sockfd){
 					printf("ENVIADO CORRETAMENTE\n");
 				}
 			}
-		}else{
-			//empty ...
 		}
 	}
 
@@ -361,15 +380,19 @@ int network_receive_send(int sockfd){
 	if(result != message_size){return ERROR;}
 	/* Libertar memória */
 
-	free(message_resposta);
-	free(message_pedido);
-	free(msg_resposta);
-	free(msg_pedido);
+	//free(message_resposta);
+	//free(message_pedido);
+	//free(msg_resposta);
+	//free(msg_pedido);
 	if(changeRoutine){
 		return CHANGE_ROUTINE;
+	}else if(hello){
+		printf("return hello\n");
+		return HELLO;
 	}else{
 		return OK;
 	}
+	
 }
 
 void lancaThread(){
@@ -537,6 +560,61 @@ int subRoutine(){
 		 						write_to_log();
 		 						printf("fim CHANGE_ROUTINE\n");
 		 						subRoutine();
+		 					}else if(result == HELLO){
+		 						//um secundario acordou e enviou hello
+   								struct sockaddr_in sa;
+   								int sa_len;
+   								/* We must put the length in a variable.              */
+								sa_len = sizeof(sa);
+							    /* Ask getsockname to fill in this socket's local     */
+							    /* address.                                           */
+								if (getsockname(socketsPoll[i].fd,(struct sockaddr *)&sa, &sa_len) == -1) {
+							    	perror("getsockname() failed");  
+							    	return -1;
+							   	}
+
+							    /* Print it. The IP address is often zero beacuase    */
+							    /* sockets are seldom bound to a specific local       */
+							    /* interface.                                         */
+							    char * ipstrr = inet_ntoa(sa.sin_addr);
+								char porto[6];
+							    int port = ntohs(sa.sin_port);
+							    sprintf(porto, "%d", port);
+							   	printf("Local IP address is: %s\n", ipstrr);
+							   	printf("Local port is: %d\n", (int) ntohs(sa.sin_port));
+								printf("my port = %s\n", porto);
+
+
+								socklen_t len;
+								struct sockaddr_storage addr;
+								char ipstr[INET6_ADDRSTRLEN];
+								
+
+								len = sizeof(addr);
+								getpeername(socketsPoll[i].fd, (struct sockaddr*)&addr, &len);
+
+								// deal with both IPv4 and IPv6:
+								if (addr.ss_family == AF_INET) {
+									struct sockaddr_in *s = (struct sockaddr_in *)&addr;
+									port = ntohs(s->sin_port);
+									inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof ipstr);
+								} else { // AF_INET6
+									struct sockaddr_in6 *s = (struct sockaddr_in6 *)&addr;
+									port = ntohs(s->sin6_port);
+									inet_ntop(AF_INET6, &s->sin6_addr, ipstr, sizeof ipstr);
+								}
+
+								printf("Peer IP address: %s\n", ipstr);
+								printf("Peer port      : %d\n", port);
+
+
+								struct server_t *serverSecundary = linkToSecServer(ipstr,secPort);
+								if(serverSecundary == NULL){
+									printf("error connecting to secundario server\n");
+								}
+
+
+		 						//int result = hello();
 		 					}
 
 						}//Fim do else de outros fd's
@@ -604,6 +682,22 @@ int write_to_log(){
 	write_log(FILE_NAME, toWrite);
 }
 
+int make_and_send_hello(struct server_t *serverAux){
+	struct message_t *hello = (struct message_t *) malloc(sizeof(struct message_t));
+	if(hello == NULL){exit(ERROR);}
+	hello->opcode = OC_HELLO;
+	hello->c_type = CT_RESULT;
+	hello->content.result = OK;
+	struct message_t *resp = network_send_receive(serverAux, hello);
+	if(resp == NULL){
+		free(hello);
+		//exit(ERROR);
+	}else if(resp->content.result != OK){
+		//exit(ERROR);
+	}
+	//considerar que correu tudo bem, agr vou ficar a espera
+	return OK;
+}
 
 int main(int argc, char **argv){
 	// caso seja pressionado o ctrl+c
@@ -650,7 +744,11 @@ int main(int argc, char **argv){
 			}else{
 				//HELLO para pedir a tabela -> sou secundario
 				isPrimary = FALSE;
-				printf("HELLO\n");
+				if(make_and_send_hello(serverAux) == OK){
+					printf("HELLO\n");
+				}else{
+					exit(ERROR);
+				}
 			}
 		}
 
@@ -684,7 +782,12 @@ int main(int argc, char **argv){
 				if(result == ERROR){return ERROR;}
 			}else{
 				//HELLO para pedir a tabela
-				printf("HELLO\n");
+				int result = make_and_send_hello(serverAux);
+				if(result == OK){
+					printf("HELLO\n");
+				}else{
+					exit(ERROR);
+				}
 			}
 		}
 
@@ -782,7 +885,7 @@ void *threaded_send_receive(void *parametro){
 	return NULL;
 }
 
-struct server_t* linkToSecServer(char* ip, char *port){
+struct server_t*linkToSecServer(char* ip, char *port){
 	struct server_t *serverAux = (struct server_t*)malloc(sizeof(struct server_t));
 	
 	/* Verificar parâmetro da função e alocação de memória */
@@ -834,7 +937,6 @@ struct server_t* linkToSecServer(char* ip, char *port){
 	serverAux->socket = sockt;
 	return serverAux;
 }
-
 
 struct message_t *network_send_receive(struct server_t *server, struct message_t *msg){
 	char *message_out;
@@ -894,7 +996,7 @@ struct message_t *network_send_receive(struct server_t *server, struct message_t
 	if(msg_resposta == NULL){
 		free(message_out);	
 
-		printf("erro resposta");
+		printf("erro resposta\n");
 		return NULL;
 	}
 	/* Libertar memória */

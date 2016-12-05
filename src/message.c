@@ -325,6 +325,7 @@ struct message_t *buffer_to_message(char *msg_buf, int msg_size){
 		}
 	}else{
 		free(msg);
+		printf("op or ct invalid\n");
 		return NULL;
 	}
 
@@ -405,6 +406,9 @@ int opIsValid(short opcode){
 			return 1;
 			break;
 		case OC_DEL_S:
+			return 1;
+			break;
+		case OC_HELLO:
 			return 1;
 			break;
 		default :
