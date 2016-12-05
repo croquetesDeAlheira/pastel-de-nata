@@ -141,6 +141,8 @@ struct message_t* server_send_with_retry (struct server_t *server, struct messag
 
   // Testa primeira tentativa
   if (msg_in == NULL) {
+    // Retry time
+    sleep(RETRY_TIME);
     // 2nd attempt
     msg_in = network_send_receive(server, msg_out);
 
