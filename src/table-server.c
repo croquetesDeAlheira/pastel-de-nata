@@ -675,11 +675,19 @@ void cluster_ip_port(char *ip_port_aux, char *ip_in, char *port_in){
 	strcat(ip_port_aux, port_in);
 }
 int write_to_log(){
+	int result; // Devolver resultado do write_log
 	destroy_log(FILE_NAME); //não interessa se ERROR ou OK
 	myIP = "127.0.0.1";
 	char *toWrite = malloc(LOG_LENGTH);
 	cluster_ip_port(toWrite, myIP, myPort);
-	write_log(FILE_NAME, toWrite);
+	// Escreve no ficheiro
+	result = write_log(FILE_NAME, toWrite);
+	
+	// Libertar memoria do toWrite
+	free(toWrite);
+	
+	// Devolve resultado
+	return result;
 }
 
 int make_and_send_hello(struct server_t *serverAux){
@@ -723,6 +731,8 @@ int main(int argc, char **argv){
 		if(result == ERROR){
 			//ficheiro nao existe -> sou primario...
 			//inicializa servidor
+			// Liberta memoria de adress_port
+			free(address_port);
 			printf("nao leu ficheiro\n");
 			write_to_log();
 			result = serverInit(myPort, listSize);
