@@ -213,7 +213,7 @@ struct message_t *buffer_to_message(char *msg_buf, int msg_size){
 	/* Recuperar o opcode e c_type */
 	memcpy(&short_aux, msg_buf, _SHORT);
 	msg->opcode = ntohs(short_aux);
-	msg_buf += _SHORT;;
+	msg_buf += _SHORT;
 
 	memcpy(&short_aux, msg_buf, _SHORT);
 	msg->c_type = ntohs(short_aux);

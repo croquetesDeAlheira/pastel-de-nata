@@ -21,7 +21,7 @@ void *threaded_send_receive(void *threadID);
 
 struct server_t * linkToSecServer();
 
-struct message_t *network_send_receive(struct server_t *server, struct message_t *msg);
+struct message_t *secundary_send_receive(struct server_t *server, struct message_t *msg);
 
 /*
 Escreve/Atualiza no ficheiro de log ip:porto do primario,
