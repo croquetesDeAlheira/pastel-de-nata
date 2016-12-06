@@ -682,17 +682,26 @@ int subRoutine(){
 								// printf("Peer port      : %d\n", port);
 
 		 						//HARD CODED
-		 						sleep(3);
-		 						secIP = "127.0.0.1";		 						
-		 						int result = hello(server);
-		 						
+		 						secIP = "127.0.0.1";
+		 						isSecondaryOn = FALSE;
+		 						result = lancaThread();
+		 						if(result == OK){
+		 							sleep(4);
+		 							while(dadosProntos != 0){
+		 								printf("waiting\n");
+		 							}
+								 	if(isSecondaryOn){
+								 		printf("secundario online de novo\n");
+								 		printf("server soc = %d\n", server->socket );
+								 		update_state(server);
+								 	}else{
+								 		printf("eror sec connect\n");
+								 	}
+		 						}
 		 					// 	server = linkToSecServer("127.0.0.1" , "44902");
 								// if(server == NULL){
 								// 	printf("error connecting to secundario server\n");
 								// }
-		 						if(result == OK){
-
-		 						}
 		 					}
 
 						}//Fim do else de outros fd's
@@ -852,9 +861,17 @@ int main(int argc, char **argv){
 **  METODOS UTILIZADOS PELA THREAD
 **
 **********************************/
-void lancaThread(){
+int lancaThread(){
+	if(server != NULL){
+		server = NULL;
+	}
+	if(params == NULL){
+		params = (struct thread_params *) malloc(sizeof(struct thread_params));
+		if(params == NULL){return ERROR;}
+	}
+
 	printf("start lancaThread\n");
-	if(secPort == NULL || secIP == NULL){return;}
+	if(secPort == NULL || secIP == NULL){return ERROR;}
 	pthread_t thread;
 	long id = 1234;
 	int threadCreated = pthread_create(&thread, NULL, threaded_send_receive, NULL);
@@ -863,10 +880,13 @@ void lancaThread(){
   		exit(ERROR);
 	}
 	printf("fim lancaThread\n");
+	return OK;
 }
 
 void *threaded_send_receive(void *parametro){
-	printf("thread started\n");
+	printf("thread started %s %s\n",secIP, secPort);
+
+
 		if(!isSecondaryOn){
 			printf(">>>>>> turning server on <<<<<<\n");
 				if(server == NULL){
@@ -890,8 +910,6 @@ void *threaded_send_receive(void *parametro){
 			}
 		}
 		printf("connected to secundario\n");
-		params = (struct thread_params *) malloc(sizeof(struct thread_params));
-		if(params == NULL){return NULL;}
 		dadosProntos = 0;
 		//ciclo de espera e envio
 		while(isSecondaryOn){
@@ -995,15 +1013,19 @@ struct message_t *network_send_receive(struct server_t *server, struct message_t
 	char *message_out;
 	int message_size, msg_size, result;
 	struct message_t *msg_resposta;
-
 	/* Verificar parâmetros de entrada */
-	if(server == NULL || msg == NULL){return NULL;}
+	if(server == NULL || msg == NULL){
+		printf("server ou msg null\n");
+		 return NULL;}
 
 	/* Serializar a mensagem recebida */
 	message_size = message_to_buffer(msg, &message_out);
 
 	/* Verificar se a serialização teve sucesso */
-	if(message_size <= 0){return NULL;} //ocorreu algum erro
+	if(message_size <= 0){
+
+		printf("erro 1\n");
+		return NULL;} //ocorreu algum erro
 
 	/* Enviar ao servidor o tamanho da mensagem que será enviada
 	   logo de seguida
@@ -1011,7 +1033,9 @@ struct message_t *network_send_receive(struct server_t *server, struct message_t
 	msg_size = htonl(message_size);
  	result = write_all(server->socket, (char *) &msg_size, _INT); //envia o size primeiro
 	/* Verificar se o envio teve sucesso */
-	if(result != _INT){return NULL;}
+	if(result != _INT){
+
+		printf("erro 2\n");return NULL;}
 
 
 	/* Enviar a mensagem que foi previamente serializada */
@@ -1019,13 +1043,17 @@ struct message_t *network_send_receive(struct server_t *server, struct message_t
 
 	/* Verificar se o envio teve sucesso */
 	if(result != message_size){
+
+		printf("erro 3\n");
 		return NULL;} //enviar de numovo?
 
 	/* De seguida vamos receber a resposta do servidor:*/
 	/*		Com a função read_all, receber num inteiro o tamanho da 
 		mensagem de resposta.*/
 	result = read_all(server->socket, (char *) &msg_size, _INT);
-	if(result != _INT){return NULL;}
+	if(result != _INT){
+
+		printf("erro 4\n");return NULL;}
 	
 	message_size = ntohl(msg_size);
 	free(message_out);
@@ -1038,6 +1066,8 @@ struct message_t *network_send_receive(struct server_t *server, struct message_t
 	result = read_all(server->socket, message_out, message_size);
 	if(result != message_size){
 		free(message_out);
+
+		printf("erro 4\n");
 		return NULL;
 	}
 
@@ -1061,8 +1091,7 @@ struct message_t *network_send_receive(struct server_t *server, struct message_t
 /*Função usada para um servidor avisar o servidor "server" de que
  já acordou. Retorna 0 em caso de sucesso, -1 em caso de insucesso*/
  int hello(struct server_t *server){
- 	lancaThread();
- 	return update_state(server);
+
  }
 
 
@@ -1075,113 +1104,183 @@ a operacao PUT do respetivo par {chave, valor}
 na tabela do servidor secundario
 */
 int update_state(struct server_t *server) {
-  // Argumentos
-  int index;
-  char** keys;
-  char* key;
-  struct data_t* value;
-  char* all = "!";
-  struct message_t *msg_out, *msg_all_keys, *msg_get, *msg_put;
+	struct message_t *pedido, *resposta;
+	char *all ="!";
 
-  // Inicializa mensagem
-  msg_out = (struct message_t*)malloc(sizeof(struct message_t));
-  // Verifica mensagem
-  if (msg_out == NULL) {return ERROR;}
+	pedido = (struct message_t*)malloc(sizeof(struct message_t));
+	if(pedido == NULL){return ERROR;}
 
-  // Cria a mensagem pedindo todas as keys
-  msg_out->opcode = OC_GET;
-  msg_out->c_type = CT_KEY;
-  msg_out->content.key = strdup(all);
-  // Envia a msg e recebe a resposta
-  msg_all_keys = invoke(msg_out);
+	//fazer pedido all keys
+	pedido->opcode = OC_GET;
+	pedido->c_type = CT_KEY;
+	pedido->content.key = strdup(all);
 
-  // Liberta memoria
-  free_message(msg_out);
+	resposta = invoke(pedido);
+	if(resposta == NULL){return ERROR;}
 
-  // Testa mensagem de resposta
-  if (msg_all_keys == NULL) {return ERROR;}
+	if(resposta->content.keys[0] != NULL){ 
+		//correr resposta
+		int i = 0;
+		struct message_t *msg_aux;
+		pedido->opcode = OC_GET;
+		pedido->c_type = CT_KEY;
+		while(resposta->content.keys[i] != NULL){
+			pedido->content.key = resposta->content.keys[i];
+			//pedir o value de key
+			msg_aux = invoke(pedido);
+			if(msg_aux == NULL){
+				printf("falhou pedido key\n");
+				return ERROR;
+			}else{
+				//montar pedido do tipo put ao secundario
+				//key_to_print = msg_aux->content.data->data;
+				pedido->opcode = OC_PUT;
+				pedido->c_type = CT_ENTRY;
+				pedido->content.entry = entry_create(resposta->content.keys[i], msg_aux->content.data);
 
-  // Todas as chaves da tabela primario
-  keys = msg_all_keys->content.keys;
+				//comecar a enviar para o secundario, atraves de uma thread
+				printf("enviar entry %s\n", resposta->content.keys[i]);
+				params->msg = pedido;
+				params->threadResult = ERROR;
+				dadosProntos = ERROR;
 
-  if (keys[0] == NULL) {
-    free_message(msg_all_keys);
-    return OK;
-  }
+				pthread_cond_signal(&dados_para_enviar);
+				pthread_mutex_unlock(&mutex);
 
-  // Elabora ciclo
-  // Corre as chaves
-  // Para cada chave faz o get do valor associado
-  // Para cada par {chave, valor} envia msg de PUT
-  // para servidor secundario
-  index = 0;
-  while(keys[index] != NULL) {
-    key = keys[index];
-    // Por cada chave pede o respetivo valor associado
-    
-    // Prepara a msg GET
-    msg_out = (struct message_t*)malloc(sizeof(struct message_t));
-    if (msg_out == NULL) {
-      free_message(msg_all_keys);
-      return ERROR;
-    }
-    
-    msg_out->opcode = OC_GET;
-    msg_out->c_type = CT_KEY;
-    msg_out->content.key = strdup(key);
-    // Envia amsg
-    msg_get = invoke(msg_out);
-    //  Liberta memoria
-    free_message(msg_out);
-    // Testa a msg
-    if (msg_get == NULL) {
-      free_message(msg_all_keys);
-      return ERROR;
-    }
+				while(dadosProntos != OK){}
 
-    // Obtem valor
-    value = msg_get->content.data;
+				pthread_mutex_lock(&mutex);
 
-    // Msg com pedido PUT
-    msg_out = (struct message_t*)malloc(sizeof(struct message_t));
-    if (msg_out == NULL) {
-      free_message(msg_get);
-      free_message(msg_all_keys);
-      return ERROR;
-    }
-    // Compoe a msg PUT
-    msg_out->opcode = OC_PUT;
-    msg_out->c_type = CT_ENTRY;
-    msg_out->content.entry = entry_create(key, value);
-
-    // ENVIA MSG A SERVIDOR SECUNDARIO
-    // FUNCAO QUE TENTA DUAS VEZES
-    result = server_send_with_retry(server, msg_out);
-
-    // Liberta memoria
-    free_message(msg_out);
-
-    // Testa msg
-    if (result == ERROR) {
-      free_message(msg_get);
-      free_message(msg_all_keys);
-      return ERROR;
-    }
-
-    // Liberta memoria
-    free_message(msg_put);
-    free_message(msg_get);
-
-    // Atualiza index 
-    index++;
-  }
-
-  // Liberta msgs que contem todas as keys
-  free_message(msg_all_keys);
-
-  // Correu tudo bem envia a confirmacao
-  return OK;  
+				if(params->threadResult == ERROR){
+					if(params->msg == NULL){
+						//secund morreu
+						return ERROR;
+					}else{
+						//tentar enviar novamente
+					}
+				}else{
+					//envioy corretamente
+				}
+			}
+			i++;
+		}
+	}else{
+		printf("tabela vazia\n");
+		return OK;
+	}
+	return OK;
 }
+
+
+
+
+
+//   // Argumentos
+//   int index;
+//   char** keys;
+//   char* key;
+//   struct data_t* value;
+//   char* all = "!";
+//   struct message_t *msg_out, *msg_all_keys, *msg_get, *msg_put;
+
+//   // Inicializa mensagem
+//   msg_out = (struct message_t*)malloc(sizeof(struct message_t));
+//   // Verifica mensagem
+//   if (msg_out == NULL) {return ERROR;}
+
+//   // Cria a mensagem pedindo todas as keys
+//   msg_out->opcode = OC_GET;
+//   msg_out->c_type = CT_KEY;
+//   msg_out->content.key = strdup(all);
+//   // Envia a msg e recebe a resposta
+//   msg_all_keys = invoke(msg_out);
+
+//   // Liberta memoria
+//   free_message(msg_out);
+
+//   // Testa mensagem de resposta
+//   if (msg_all_keys == NULL) {return ERROR;}
+
+//   // Todas as chaves da tabela primario
+//   keys = msg_all_keys->content.keys;
+
+//   if (keys[0] == NULL) {
+//     free_message(msg_all_keys);
+//     return OK;
+//   }
+
+//   // Elabora ciclo
+//   // Corre as chaves
+//   // Para cada chave faz o get do valor associado
+//   // Para cada par {chave, valor} envia msg de PUT
+//   // para servidor secundario
+//   index = 0;
+//   while(keys[index] != NULL) {
+//     key = keys[index];
+//     // Por cada chave pede o respetivo valor associado
+    
+//     // Prepara a msg GET
+//     msg_out = (struct message_t*)malloc(sizeof(struct message_t));
+//     if (msg_out == NULL) {
+//       free_message(msg_all_keys);
+//       return ERROR;
+//     }
+    
+//     msg_out->opcode = OC_GET;
+//     msg_out->c_type = CT_KEY;
+//     msg_out->content.key = strdup(key);
+//     // Envia amsg
+//     msg_get = invoke(msg_out);
+//     //  Liberta memoria
+//     free_message(msg_out);
+//     // Testa a msg
+//     if (msg_get == NULL) {
+//       free_message(msg_all_keys);
+//       return ERROR;
+//     }
+
+//     // Obtem valor
+//     value = msg_get->content.data;
+
+//     // Msg com pedido PUT
+//     msg_out = (struct message_t*)malloc(sizeof(struct message_t));
+//     if (msg_out == NULL) {
+//       free_message(msg_get);
+//       free_message(msg_all_keys);
+//       return ERROR;
+//     }
+//     // Compoe a msg PUT
+//     msg_out->opcode = OC_PUT;
+//     msg_out->c_type = CT_ENTRY;
+//     msg_out->content.entry = entry_create(key, value);
+
+//     // ENVIA MSG A SERVIDOR SECUNDARIO
+//     // FUNCAO QUE TENTA DUAS VEZES
+//     result = server_send_with_retry(server, msg_out);
+
+//     // Liberta memoria
+//     free_message(msg_out);
+
+//     // Testa msg
+//     if (result == ERROR) {
+//       free_message(msg_get);
+//       free_message(msg_all_keys);
+//       return ERROR;
+//     }
+
+//     // Liberta memoria
+//     free_message(msg_put);
+//     free_message(msg_get);
+
+//     // Atualiza index 
+//     index++;
+//   }
+
+//   // Liberta msgs que contem todas as keys
+//   free_message(msg_all_keys);
+
+//   // Correu tudo bem envia a confirmacao
+//   return OK;  
 
 /*
 Tenta duas vezes enviar uma mensagem

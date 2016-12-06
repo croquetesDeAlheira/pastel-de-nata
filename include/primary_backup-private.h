@@ -73,7 +73,7 @@ int subRoutine();
 
 int make_and_send_hello(struct server_t *serverAux);
 
-void lancaThread();
+int lancaThread();
 
 
 int server_send_with_retry (struct server_t *server, struct message_t *msg_out);
