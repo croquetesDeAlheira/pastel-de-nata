@@ -322,6 +322,7 @@ int network_receive_send(int sockfd){
 	struct message_t *msg_pedido, *msg_resposta;
 	int changeRoutine = FALSE;
 	int hello = FALSE;
+	int msgFromPrimary = FALSE;
 
 	/* Com a função read_all, receber num inteiro o tamanho da 
 	   mensagem de pedido que será recebida de seguida.*/
@@ -383,7 +384,11 @@ int network_receive_send(int sockfd){
 		if(opcode == msg_pedido->opcode){
 			//mudar rotina 
 			changeRoutine = TRUE;
-		}//se nao mudou, simplesmente continua...
+		}else{
+			// a mensage veio do primario
+			msgFromPrimary = TRUE;
+		}
+		//se nao mudou, simplesmente continua...
 	}
 	/* Processar a mensagem */
 	if(!hello){
@@ -419,7 +424,9 @@ int network_receive_send(int sockfd){
 			}
 
 			//caso tenha mudado, enviar para o secundario
-			if(opcode != msg_pedido->opcode){
+			// E enviar somente no caso de ter sido feito com sucesso na minha table
+			// e neste caso o c_type eh sempre do tipo result
+			if( (opcode != msg_pedido->opcode) && (msg_resposta->content.result == OK)){
 				//enviar
 				printf("enviar para o secundario\n");
 
@@ -433,16 +440,36 @@ int network_receive_send(int sockfd){
 	      		// int resultThread = atoi((char *)&threadRetun)
 	      		while(dadosProntos != OK){}
 				pthread_mutex_lock(&mutex);
-				if(params->threadResult = ERROR && params->msg == NULL){
+				if(params->msg == NULL){
 					//é pq o secundario desconectou
 					printf("SECUNDARIO OFFLINE\n");
 
+				}else if(params->threadResult == ERROR){
+					//no caso de ter enviado para o cliente e tenha ocorrido erro
+					//devemos tirar a entrada da nossa tabela?!
+					printf("ENVIO COM ERRO\n");
 				}else{
 					printf("ENVIADO CORRETAMENTE\n");
 				}
 			}
 		}
 	}
+
+	// if(!isPrimary){
+	// 	//se sou secundario e recebi uma msg do primario
+	// 	//tenho de responder de forma especifica
+	// 	if(msgFromPrimary){
+	// 		//verificar se tudo correu bem no invoke
+	// 		//put _ update _ del retornam sempre c_type result
+	// 		if(msg_resposta->c_type == CT_RESULT &&
+	// 				msg_resposta->content.result == OK){
+
+	// 		}
+	// 	}
+	// }
+
+
+
 
 	/* Serializar a mensagem recebida */
 	message_size = message_to_buffer(msg_resposta, &message_resposta);
@@ -451,6 +478,9 @@ int network_receive_send(int sockfd){
 	/* Enviar ao cliente o tamanho da mensagem que será enviada
 	   logo de seguida
 	*/
+
+
+
 	msg_size = htonl(message_size);
 	result = write_all(sockfd, (char *) &msg_size, _INT);
 	/* Verificar se o envio teve sucesso */
@@ -816,14 +846,14 @@ void *threaded_send_receive(void *parametro){
 		dadosProntos = 0;
 		//ciclo de espera e envio
 		while(isSecondaryOn){
-			params->threadResult = ERROR;
-
 			pthread_mutex_lock(&mutex);
 
 			while(dadosProntos == 0){
 				pthread_cond_wait(&dados_para_enviar, &mutex);
 			}
 			//enviar para o servidor secundario
+
+			params->threadResult = ERROR;
 			struct message_t *msg_resposta;
 			if(params->msg == NULL){
 				//acabar thread
@@ -832,9 +862,26 @@ void *threaded_send_receive(void *parametro){
 			msg_resposta = secundary_send_receive(server, params->msg);
 			if(msg_resposta == NULL){
 				//acabar thread ocorreu um erro
-				isSecondaryOn = FALSE;
-				params->msg = NULL;
-				params->threadResult = ERROR;
+				//tentar enviar novamente antes de colocar a DOWN depois do retry
+				sleep(RETRY_SLEEP);
+				msg_resposta = secundary_send_receive(server, params->msg);
+				if(msg_resposta == NULL){
+					//falhou o envio novamente
+					isSecondaryOn = FALSE;
+					params->msg = NULL;
+					params->threadResult = ERROR;
+				}else{
+					//acabou bem
+					if(msg_resposta->c_type == CT_RESULT){
+						if(msg_resposta->content.result == OK){
+							params->threadResult = OK;
+						}else{
+							params->threadResult = ERROR;
+						}
+					}else{
+						params->threadResult = ERROR;
+					}
+				}
 			}else{
 				//acabou bem
 				if(msg_resposta->c_type == CT_RESULT){
