@@ -35,11 +35,11 @@
 #define FALSE 0 // boolean false
 #define NCLIENTS 10 // Número de sockets (uma para listening e uma para o stdin)
 #define TIMEOUT -1 // em milisegundos
-#define LOG_LENGTH 16 // Tamanho da string ip:porto para o ficheiro de log
+#define LOG_LENGTH 32 // Tamanho da string ip:porto para o ficheiro de log
+#define RETRY_SLEEP 2
 char * FILE_NAME = "serverfile.txt";
+char *myIP = "127.0.0.1"; //considerar que o secundario e o primario estão sempre na mesma maquina
 
-//declarações
-void *threaded_send_receive(void *threadID);
 //variaveis globais
 int i;
 int numFds = 2; //numero de fileDescriptors
@@ -56,7 +56,6 @@ struct sockaddr_in client; // struct cliente
 socklen_t size_client; // size cliente
 int checkPoll; // check do poll , verificar se houve algo no poll
 struct server_t *server; //servidor
-char *myIP;
 char *secPort;
 char *secIP;
 char *myPort;
@@ -140,10 +139,8 @@ int destroy_log(char* file_name) {
 int write_to_log(){
 	int result; // Devolver resultado do write_log
 	destroy_log(FILE_NAME); //não interessa se ERROR ou OK
-	myIP = "127.0.0.1";
 	char *toWrite = malloc(LOG_LENGTH);
 	cluster_ip_port(toWrite, myIP, myPort);
-	printf("%s\n",toWrite );
 	// Escreve no ficheiro
 	result = write_log(FILE_NAME, toWrite);
 	
@@ -228,6 +225,8 @@ void divide_ip_port(char *address_port, char *ip_ret, char *port_ret){
 void cluster_ip_port(char *ip_port_aux, char *ip_in, char *port_in){
 	//juntar o ip:port
 	char ip_port_seperator[2] = ":";
+	//serve para nao inserir erros na string e causar erro no write to log
+	ip_port_aux[0] = '\0';
 	strcat(ip_port_aux, ip_in);
 	strcat(ip_port_aux, ip_port_seperator);
 	strcat(ip_port_aux, port_in);
@@ -309,8 +308,6 @@ int make_server_socket(short port){
   return socket_fd;
 }
 
-
-
 /* Função "inversa" da função secundary_send_receive usada no table-client.
    Neste caso a função implementa um ciclo receive/send:
 
@@ -350,10 +347,19 @@ int network_receive_send(int sockfd){
 
 	//check if secundario acordou
 	if(isPrimary){
-		if(msg_pedido->opcode == OC_HELLO){
+		if(msg_pedido->opcode == OC_HELLO && msg_pedido->c_type == CT_KEY){
 			hello = TRUE;
-			secPort = malloc(6);
-			sprintf(secPort, "%d", msg_pedido->content.result);
+			printf("hello get ip and port\n");
+			char * ip_port = malloc(LOG_LENGTH);
+			sprintf(ip_port, "%s", msg_pedido->content.key);
+			printf("%s\n",ip_port );
+			char * ip = malloc(16);
+			char * port = malloc(6);
+			divide_ip_port(ip_port, ip, port);
+			secIP = ip;
+			secPort = port;
+			printf("divide feito %s %s \n", secIP , secPort );
+			free(ip_port);
 			printf("secundario fez pedido hello\n");
 		}
 	}
@@ -626,14 +632,13 @@ int subRoutine(){
 		 						printf("fim CHANGE_ROUTINE\n");
 		 						subRoutine();
 		 					}else if(result == HELLO){
-		 						secIP = "127.0.0.1";
 		 						isSecondaryOn = FALSE;
 		 						result = lancaThread();
 		 					    if(result == OK){
 		 					    	printf("recebeu ok da thread\n");
-		 					    	sleep(5); //esperar thread fazer connect
+		 					    	sleep(RETRY_SLEEP+RETRY_SLEEP); //esperar thread fazer connect
 		 							if(isSecondaryOn){
-									 		update_state(server);
+									 	update_state(server);
 								 	}else{
 								 		printf("erro ao contectar com o secundario\n");
 								 	}
@@ -648,29 +653,7 @@ int subRoutine(){
 	return OK;
 }
 
-int make_and_send_hello(struct server_t *serverAux){
-	printf("send hello\n");
-	struct message_t *hello = (struct message_t *) malloc(sizeof(struct message_t));
-	if(hello == NULL){exit(ERROR);}
-	hello->opcode = OC_HELLO;
-	hello->c_type = CT_RESULT;
-	hello->content.result = atoi(myPort);
-	struct message_t *resp = secundary_send_receive(serverAux, hello);
-	if(resp == NULL){
-		free(hello);
-		printf("erro send hello\n");
-		exit(ERROR);
-	}else if(resp->content.result != OK){
-		exit(ERROR);
-	}else{
-		printf("pedido realizado com sucesso\n");
-	}
-	//considerar que correu tudo bem, agr vou ficar a espera
-	close(serverAux->socket);
-	free(serverAux);
-	printf("fin send hello\n");
-	return OK;
-}
+
 
 int main(int argc, char **argv){
 	// caso seja pressionado o ctrl+c
@@ -696,7 +679,6 @@ int main(int argc, char **argv){
 		if(result == ERROR){
 			//ficheiro nao existe -> sou primario...
 			//inicializa servidor
-			printf("nao leu ficheiro\n");
 			write_to_log();
 			result = serverInit(myPort, listSize);
 			if(result == ERROR){return ERROR;}		
@@ -713,11 +695,11 @@ int main(int argc, char **argv){
 			}else{
 				//HELLO para pedir a tabela -> sou secundario
 				isPrimary = FALSE;
-				if(make_and_send_hello(serverAux) == OK){
+				if(hello(serverAux) == OK){
 					result = serverInit(myPort, listSize);
 					if(result == ERROR){return ERROR;}
 				}else{
-					exit(ERROR);
+					return ERROR;
 				}
 			}
 		}
@@ -756,12 +738,11 @@ int main(int argc, char **argv){
 
 			}else{
 				//HELLO para pedir a tabela
-				int result = make_and_send_hello(serverAux);
-				if(result == OK){
+				if(hello(serverAux) == OK){
 					result = serverInit(myPort, listSize);
 					if(result == ERROR){return ERROR;}
 				}else{
-					exit(ERROR);
+					return ERROR;
 				}
 			}
 		}
@@ -814,7 +795,7 @@ void *threaded_send_receive(void *parametro){
 				if(server == NULL){				
 				server = linkToSecServer(secIP,secPort);
 				if(server == NULL){
-					sleep(4); //esperar
+					sleep(RETRY_SLEEP); //esperar
 					server = linkToSecServer(secIP,secPort);
 					if(server == NULL){
 						//destruir thread
@@ -996,20 +977,13 @@ struct message_t *secundary_send_receive(struct server_t *server, struct message
 	return msg_resposta;
 }
 
-/*Função usada para um servidor avisar o servidor "server" de que
- já acordou. Retorna 0 em caso de sucesso, -1 em caso de insucesso*/
- int hello(struct server_t *server){
-
- }
-
-
 /*
-Pede atualização de estado do server
-Retorna 0 em caso de sucesso e -1 em caso de insucesso
-Recolhe todas as chaves existentes na tabela servidor primario
-Por cada chave, pede o seu valor e executa 
-a operacao PUT do respetivo par {chave, valor}
-na tabela do servidor secundario
+	Pede atualização de estado do server
+	Retorna 0 em caso de sucesso e -1 em caso de insucesso
+	Recolhe todas as chaves existentes na tabela servidor primario
+	Por cada chave, pede o seu valor e executa 
+	a operacao PUT do respetivo par {chave, valor}
+	na tabela do servidor secundario
 */
 int update_state(struct server_t *server) {
 	struct message_t *pedido, *resposta;
@@ -1079,6 +1053,35 @@ int update_state(struct server_t *server) {
 		printf("tabela vazia\n");
 		return OK;
 	}
+	return OK;
+}
+
+/*Função usada para um servidor avisar o servidor "server" de que
+ já acordou. Retorna 0 em caso de sucesso, -1 em caso de insucesso*/
+int hello(struct server_t *serverr){
+	printf("send hello\n");
+	struct message_t *hello = (struct message_t *) malloc(sizeof(struct message_t));
+	if(hello == NULL){exit(ERROR);}
+	hello->opcode = OC_HELLO;
+	hello->c_type = CT_KEY;
+	char *ip_port = malloc(LOG_LENGTH);
+	cluster_ip_port(ip_port,myIP,myPort);
+	hello->content.key = ip_port;
+	struct message_t *resp = secundary_send_receive(serverr, hello);
+	if(resp == NULL){
+		//tentar enviar hello novamente depois de um tempo
+		sleep(RETRY_SLEEP);
+		resp = secundary_send_receive(serverr, hello);
+		if(resp == NULL){
+			return ERROR;
+		}
+	}else if(resp->content.result != OK){
+		return ERROR;
+	}
+	//considerar que correu tudo bem, agr vou ficar a espera
+	close(serverr->socket);
+	free(serverr);
+	free(hello);
 	return OK;
 }
 
