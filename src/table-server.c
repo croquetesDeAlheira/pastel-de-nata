@@ -322,7 +322,6 @@ int network_receive_send(int sockfd){
 	struct message_t *msg_pedido, *msg_resposta;
 	int changeRoutine = FALSE;
 	int hello = FALSE;
-	int msgFromPrimary = FALSE;
 
 	/* Com a função read_all, receber num inteiro o tamanho da 
 	   mensagem de pedido que será recebida de seguida.*/
@@ -384,9 +383,6 @@ int network_receive_send(int sockfd){
 		if(opcode == msg_pedido->opcode){
 			//mudar rotina 
 			changeRoutine = TRUE;
-		}else{
-			// a mensage veio do primario
-			msgFromPrimary = TRUE;
 		}
 		//se nao mudou, simplesmente continua...
 	}
@@ -454,22 +450,6 @@ int network_receive_send(int sockfd){
 			}
 		}
 	}
-
-	// if(!isPrimary){
-	// 	//se sou secundario e recebi uma msg do primario
-	// 	//tenho de responder de forma especifica
-	// 	if(msgFromPrimary){
-	// 		//verificar se tudo correu bem no invoke
-	// 		//put _ update _ del retornam sempre c_type result
-	// 		if(msg_resposta->c_type == CT_RESULT &&
-	// 				msg_resposta->content.result == OK){
-
-	// 		}
-	// 	}
-	// }
-
-
-
 
 	/* Serializar a mensagem recebida */
 	message_size = message_to_buffer(msg_resposta, &message_resposta);
