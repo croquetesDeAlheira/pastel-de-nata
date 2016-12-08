@@ -322,6 +322,7 @@ int network_receive_send(int sockfd){
 	struct message_t *msg_pedido, *msg_resposta;
 	int changeRoutine = FALSE;
 	int hello = FALSE;
+	int helloSuccess = FALSE;
 
 	/* Com a função read_all, receber num inteiro o tamanho da 
 	   mensagem de pedido que será recebida de seguida.*/
@@ -358,6 +359,12 @@ int network_receive_send(int sockfd){
 			divide_ip_port(ip_port, ip, port);
 			secIP = ip;
 			secPort = port;
+			result = strcmp(secPort, myPort);
+			if(result){
+				//o porto que tentou conectar é o diferente do meu
+				printf("e' diferente\n");
+				helloSuccess = TRUE;
+			}
 			printf("divide feito %s %s \n", secIP , secPort );
 			free(ip_port);
 			printf("secundario fez pedido hello\n");
@@ -397,7 +404,13 @@ int network_receive_send(int sockfd){
 		if(msg_resposta == NULL){return ERROR;}
 		msg_resposta->opcode = OC_HELLO;
 		msg_resposta->c_type = CT_RESULT;
-		msg_resposta->content.result = OK;
+		if(helloSuccess){
+			msg_resposta->content.result = OK;
+			printf("com sucesso\n");
+		}else{
+			printf("sem sucesso\n");
+			msg_resposta->content.result = ERROR;
+		}
 	}
 
 
@@ -479,7 +492,7 @@ int network_receive_send(int sockfd){
 	//free(msg_pedido);
 	if(changeRoutine){
 		return CHANGE_ROUTINE;
-	}else if(hello){
+	}else if(hello && helloSuccess){
 		return HELLO;
 	}else{
 		return OK;
@@ -645,7 +658,7 @@ int subRoutine(){
 		 						isSecondaryOn = FALSE;
 		 						result = lancaThread();
 		 					    if(result == OK){
-		 					    	printf("recebeu ok da thread\n");
+		 					    	printf("Aguarde, estamos a estabelecer ligação...\n");
 		 					    	sleep(RETRY_SLEEP+RETRY_SLEEP); //esperar thread fazer connect
 		 							if(isSecondaryOn){
 									 	update_state(server);
@@ -1100,9 +1113,11 @@ int hello(struct server_t *serverr){
 		sleep(RETRY_SLEEP);
 		resp = secundary_send_receive(serverr, hello);
 		if(resp == NULL){
+			printf("ocorreu um erro ao conectar com o primario\n");
 			return ERROR;
 		}
 	}else if(resp->content.result != OK){
+		printf("Problema na transferencia, desligar ligação...\n");
 		return ERROR;
 	}
 	//considerar que correu tudo bem, agr vou ficar a espera
