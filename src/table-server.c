@@ -37,7 +37,8 @@
 #define TIMEOUT -1 // em milisegundos
 #define LOG_LENGTH 32 // Tamanho da string ip:porto para o ficheiro de log
 #define RETRY_SLEEP 2
-char * FILE_NAME = "serverfile.txt";
+char * FILE_NAME_PRI = "priServerFile.txt"; //save info about primary server
+char * FILE_NAME_SEC = "secServerFile.txt"; //save info about secundary server
 char *myIP = "127.0.0.1"; //considerar que o secundario e o primario estão sempre na mesma maquina
 
 //variaveis globais
@@ -136,13 +137,13 @@ int destroy_log(char* file_name) {
 /**
 *	WRITE TO LOG IP AND PORT
 */
-int write_to_log(){
+int write_to_log(char*file,char *ip, char*port){
 	int result; // Devolver resultado do write_log
-	destroy_log(FILE_NAME); //não interessa se ERROR ou OK
+	destroy_log(file); //não interessa se ERROR ou OK
 	char *toWrite = malloc(LOG_LENGTH);
-	cluster_ip_port(toWrite, myIP, myPort);
+	cluster_ip_port(toWrite, ip, port);
 	// Escreve no ficheiro
-	result = write_log(FILE_NAME, toWrite);
+	result = write_log(file, toWrite);
 	
 	// Libertar memoria do toWrite
 	free(toWrite);
@@ -390,6 +391,22 @@ int network_receive_send(int sockfd){
 		if(opcode == msg_pedido->opcode){
 			//mudar rotina 
 			changeRoutine = TRUE;
+		}else{
+			//o pedido veio de um servidor primario
+			//escrever um ficheiro com o seu ip e porto
+			//se eu ainda nao tiver escrito um
+			struct sockaddr_in addr;
+			socklen_t addr_len = sizeof(addr);
+			int err = getpeername(sockfd, (struct sockaddr *) &addr, &addr_len);
+			if (err != 0) {
+   				// error
+			}else{
+				char ipstr[LOG_LENGTH];
+				inet_ntop(AF_INET, &addr.sin_addr, ipstr, sizeof(ipstr));	
+				printf("Connection established successfully with %s:%i!\n", ipstr, ntohs(addr.sin_port));
+				char *porto = "44901";
+				write_to_log(FILE_NAME_PRI, ipstr, porto);
+			}
 		}
 		//se nao mudou, simplesmente continua...
 	}
@@ -651,7 +668,8 @@ int subRoutine(){
 								   4) iniciar rotina */
 		 						printf("iniciar change routine\n");
 		 						isPrimary = TRUE;
-		 						write_to_log();
+		 						destroy_log(FILE_NAME_PRI);
+		 						//write_to_log(FILE_NAME_SEC, myiP, myp);
 		 						printf("fim CHANGE_ROUTINE\n");
 		 						subRoutine();
 		 					}else if(result == HELLO){
@@ -698,11 +716,11 @@ int main(int argc, char **argv){
 
 		//tenta conectar com algum servidor primario
 		char *address_port = malloc(LOG_LENGTH);
-		result = read_log(FILE_NAME,address_port);
+		result = read_log(FILE_NAME_SEC,address_port);
 		if(result == ERROR){
 			//ficheiro nao existe -> sou primario...
 			//inicializa servidor
-			write_to_log();
+			//write_to_log();
 			result = serverInit(myPort, listSize);
 			if(result == ERROR){return ERROR;}		
 		}else{
@@ -712,7 +730,7 @@ int main(int argc, char **argv){
 			struct server_t *serverAux = linkToSecServer(ip,port);
 			if(serverAux == NULL){
 				//inicializa servidor
-				write_to_log();
+				//write_to_log();
 				result = serverInit(myPort, listSize);
 				if(result == ERROR){return ERROR;}
 			}else{
@@ -739,7 +757,7 @@ int main(int argc, char **argv){
 
 		//tenta conectar com algum servidor primario
 		char *address_port = malloc(LOG_LENGTH);
-		result = read_log(FILE_NAME,address_port);
+		result = read_log(FILE_NAME_PRI,address_port);
 		if(result == ERROR){
 			//ficheiro nao existe -> sou secundario..
 			//inicializa servidor
@@ -755,7 +773,7 @@ int main(int argc, char **argv){
 
 			if(serverAux == NULL){
 				//inicializa servidor
-				destroy_log(FILE_NAME);
+				destroy_log(FILE_NAME_PRI);
 				result = serverInit(myPort, listSize);
 				if(result == ERROR){return ERROR;}
 
@@ -824,11 +842,15 @@ void *threaded_send_receive(void *parametro){
 						//destruir thread
 						return NULL;
 					}else{
+						destroy_log(FILE_NAME_SEC);
+						write_to_log(FILE_NAME_SEC, secIP, secPort);
 						server->porto = secPort;
 						server->ip = secIP;
 						isSecondaryOn = TRUE;
 					}
 				}else{
+					destroy_log(FILE_NAME_SEC);
+					write_to_log(FILE_NAME_SEC, secIP, secPort);
 					server->porto = secPort;
 					server->ip = secIP;
 					isSecondaryOn = TRUE;
