@@ -772,10 +772,37 @@ int main(int argc, char **argv){
 		char *address_port = malloc(LOG_LENGTH);
 		result = read_log(FILE_NAME_PRI,address_port);
 		if(result == ERROR){
-			//ficheiro nao existe -> sou secundario..
-			//inicializa servidor
-			result = serverInit(myPort, listSize);
-			if(result == ERROR){return ERROR;}
+			//ficheiro nao existe ficheiro sobre o primario
+			//logo sou secundario, mas pode haver um novo primario que era
+			//secundario quando morri
+			result = read_log(FILE_NAME_SEC, address_port);
+			if(result == ERROR){
+				result = serverInit(myPort, listSize);
+				if(result == ERROR){return ERROR;}
+			}else{
+				char * ip = malloc(16);
+				char * port = malloc(6);
+				divide_ip_port(address_port, ip, port);
+				struct server_t *serverAux = linkToSecServer(ip,port);
+				free(ip);
+				free(port);
+
+				if(serverAux == NULL){
+					//inicializa servidor
+					destroy_log(FILE_NAME_SEC);
+					result = serverInit(myPort, listSize);
+					if(result == ERROR){return ERROR;}
+
+				}else{
+					//HELLO para pedir a tabela
+					if(hello(serverAux) == OK){
+						result = serverInit(myPort, listSize);
+						if(result == ERROR){return ERROR;}
+					}else{
+						return ERROR;
+					}
+				}
+			}
 		}else{
 			char * ip = malloc(16);
 			char * port = malloc(6);
