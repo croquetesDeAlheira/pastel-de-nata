@@ -179,6 +179,10 @@ int write_all(int sock, char *buf, int len){
 	int bufsize = len;
 	while(len > 0){
 		int res = write(sock, buf, len);
+		if(res == 0){
+			//servidor disconnected...
+			return ERROR;
+		}
 		if(res < 0){
 			if(errno == EINTR) continue;
 			perror("write failed:");
@@ -197,9 +201,13 @@ int read_all(int sock, char *buf, int len){
 	int bufsize = len;
 	while(len > 0){
 		int res = read(sock, buf, len);
+		if(res == 0){
+			//client disconnected...
+			return ERROR;
+		}
 		if(res < 0){
 			if(errno == EINTR) continue;
-			perror("write failed:");
+			perror("read failed:");
 			return res;
 		}
 		buf+= res;

@@ -142,7 +142,7 @@ struct message_t *network_with_retry(struct rtable_t *table, struct message_t *m
 	struct message_t *msg_resposta;
 	// Primeira tentativa a contactar servidor primário
 	msg_resposta = network_send_receive(table->server, msg_pedido);
-
+	printf("msg enviada nsr\n");
 	if(msg_resposta == NULL){
 		// Não conseguiu contactar
 		// Aguarda um tempo e tenta de novo
