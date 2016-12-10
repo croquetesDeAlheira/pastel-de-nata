@@ -13,6 +13,8 @@ struct server_t {
 já acordou. Retorna 0 em caso de sucesso, -1 em caso de insucesso*/
 int hello(struct server_t *server);
 
+int sendSpecialHello(struct server_t *serverr);
+
 /*Pede atualização de estado do server
 Retorna 0 em caso de sucesso e -1 em caso de insucesso*/
 int update_state(struct server_t *server);
@@ -70,8 +72,6 @@ int make_server_socket(short port);
 int network_receive_send(int sockfd);
 
 int subRoutine();
-
-int make_and_send_hello(struct server_t *serverAux);
 
 int lancaThread();
 

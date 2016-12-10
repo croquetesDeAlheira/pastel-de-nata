@@ -322,7 +322,7 @@ int network_receive_send(int sockfd){
 	int message_size, msg_size, result;
 	struct message_t *msg_pedido, *msg_resposta;
 	int changeRoutine = FALSE;
-	int hello = FALSE;
+	int helloP = FALSE;
 	int helloSuccess = FALSE;
 	int helloSpecial = FALSE;
 
@@ -351,25 +351,23 @@ int network_receive_send(int sockfd){
 	//check if secundario acordou
 	if(isPrimary){
 		if(msg_pedido->opcode == OC_HELLO && msg_pedido->c_type == CT_KEY){
-			hello = TRUE;
+			helloP = TRUE;
 			printf("hello get ip and port\n");
-			char * ip_port = malloc(LOG_LENGTH);
-			sprintf(ip_port, "%s", msg_pedido->content.key);
-			printf("%s\n",ip_port );
-			char * ip = malloc(16);
-			char * port = malloc(6);
-			divide_ip_port(ip_port, ip, port);
-			secIP = ip;
-			secPort = port;
-			result = strcmp(secPort, myPort);
-			if(result){
-				//o porto que tentou conectar é o diferente do meu
-				printf("e' diferente\n");
-				helloSuccess = TRUE;
+			struct sockaddr_in addr;
+			socklen_t addr_len = sizeof(addr);
+			char ipstr[LOG_LENGTH];
+			int err = getpeername(sockfd, (struct sockaddr *) &addr, &addr_len);
+			if (err != 0) {
+				printf("erro ao obter ip do primario\n");
+			}else{
+				inet_ntop(AF_INET, &addr.sin_addr, ipstr, sizeof(ipstr));	
+				printf("Connection established successfully with %s:%i!\n", ipstr, ntohs(addr.sin_port));
+				secPort = strdup(msg_pedido->content.key);
 			}
+			secIP = strdup(ipstr);
 			printf("divide feito %s %s \n", secIP , secPort );
-			free(ip_port);
 			printf("secundario fez pedido hello\n");
+			helloSuccess = TRUE;
 		}
 	}
 
@@ -391,36 +389,29 @@ int network_receive_send(int sockfd){
 			helloSpecial = TRUE;
 			printf("hello special no secundario\n");
 			//gravar ip:porto
-			//msg-key ja vem no formato ip:porto
-			write_log(FILE_NAME_PRI, msg_pedido->content.key);
-
+			 struct sockaddr_in addr;
+			 socklen_t addr_len = sizeof(addr);
+			 int err = getpeername(sockfd, (struct sockaddr *) &addr, &addr_len);
+			 if (err != 0) {
+   				printf("erro ao obter ip do primario\n");
+			}else{
+			 	char ipstr[LOG_LENGTH];
+			 	inet_ntop(AF_INET, &addr.sin_addr, ipstr, sizeof(ipstr));	
+			 	printf("Connection established successfully with %s:%i!\n", ipstr, ntohs(addr.sin_port));
+			 	char *porto = msg_pedido->content.key;
+			 	write_to_log(FILE_NAME_PRI, ipstr, porto);
+			 }
 		}
 
 		//caso não tenha mudado, veio de um cliente
 		if(opcode == msg_pedido->opcode && msg_pedido->opcode != OC_HELLO_SPECIAL){
 			//mudar rotina 
 			changeRoutine = TRUE;
-		}else{
-			//o pedido veio de um servidor primario
-			//escrever um ficheiro com o seu ip e porto
-			//se eu ainda nao tiver escrito um
-			// struct sockaddr_in addr;
-			// socklen_t addr_len = sizeof(addr);
-			// int err = getpeername(sockfd, (struct sockaddr *) &addr, &addr_len);
-			// if (err != 0) {
-   // 				// error
-			// }else{
-			// 	char ipstr[LOG_LENGTH];
-			// 	inet_ntop(AF_INET, &addr.sin_addr, ipstr, sizeof(ipstr));	
-			// 	printf("Connection established successfully with %s:%i!\n", ipstr, ntohs(addr.sin_port));
-			// 	char *porto = "44901";
-			// 	write_to_log(FILE_NAME_PRI, ipstr, porto);
-			//
 		}
 		//se nao mudou, simplesmente continua...
 	}
 	/* Processar a mensagem */
-	if(!hello && !helloSpecial){
+	if(!helloP && !helloSpecial){
 		msg_resposta = invoke(msg_pedido);
 		if(msg_resposta == NULL){ // erro no invoke
 			return ERROR;
@@ -428,18 +419,20 @@ int network_receive_send(int sockfd){
 	}else{
 		msg_resposta = (struct message_t *)malloc(sizeof(struct message_t));
 		if(msg_resposta == NULL){return ERROR;}
-		if(hello){
+		if(helloP){
 			msg_resposta->opcode = OC_HELLO;
 		}else{
 			msg_resposta->opcode = OC_HELLO_SPECIAL;
 		}
 		msg_resposta->c_type = CT_RESULT;
-		if(helloSuccess){
-			msg_resposta->content.result = OK;
-			printf("com sucesso\n");
+		if(helloP){
+			if(helloSuccess){
+				msg_resposta->content.result = OK;
+			}else{
+				msg_resposta->content.result = ERROR;
+			}
 		}else{
-			printf("sem sucesso\n");
-			msg_resposta->content.result = ERROR;
+			msg_resposta->content.result = OK;
 		}
 	}
 
@@ -448,7 +441,7 @@ int network_receive_send(int sockfd){
 	caso seja primario , verificar se opcode
 	faz alteracoes na tabela,
 	se sim, enviar para o secundario */
-	if(isPrimary  && !hello){ //DEPOIS DO INVOKE
+	if(isPrimary  && !helloP){ //DEPOIS DO INVOKE
 		//ja temos o opcode
 		int opcode = msg_pedido->opcode;
 		//verificar & se for algum, mudar o opcode da mensage
@@ -522,7 +515,7 @@ int network_receive_send(int sockfd){
 	//free(msg_pedido);
 	if(changeRoutine){
 		return CHANGE_ROUTINE;
-	}else if(hello && helloSuccess){
+	}else if(helloP && helloSuccess){
 		return HELLO;
 	}else{
 		return OK;
@@ -544,18 +537,13 @@ int subRoutine(){
 		}
 		//o primario ganha poder do mutex
 		pthread_mutex_lock(&mutex);
-		dadosProntos = ERROR;
-		result = lancaThread();
-		if(result == OK)
-			sendSpecialHello();				
-
-
-      	
+		result = lancaThread();    	
 	}else{
 		printf("a espera de clientes - secundario...\n");
 	}
 	//call poll and check
 	while(serverAux_on){ //while no cntrl c
+		printf("server online\n");
 		while((checkPoll = poll(socketsPoll, numFds, TIMEOUT)) >= 0){
 			//verifica se nao houve evento em nenhum socket
 			if(checkPoll == 0){
@@ -689,6 +677,7 @@ int subRoutine(){
 		 						//write_to_log(FILE_NAME_SEC, myiP, myp);
 		 						printf("fim CHANGE_ROUTINE\n");
 		 						subRoutine();
+
 		 					}else if(result == HELLO){
 		 						isSecondaryOn = FALSE;
 		 						result = lancaThread();
@@ -738,8 +727,15 @@ int main(int argc, char **argv){
 			//ficheiro nao existe -> sou primario...
 			//inicializa servidor
 			//write_to_log();
-			result = serverInit(myPort, listSize);
-			if(result == ERROR){return ERROR;}		
+
+			struct server_t *serverAux = linkToSecServer(secIP, secPort);
+			if(serverAux != NULL){
+				result = sendSpecialHello(serverAux);
+				if(result == OK){
+					result = serverInit(myPort, listSize);
+					if(result == ERROR){return ERROR;}
+				}
+			}
 		}else{
 			char * ip = malloc(16);
 			char * port = malloc(6);
@@ -860,7 +856,6 @@ void *threaded_send_receive(void *parametro){
 					server = linkToSecServer(secIP,secPort);
 					if(server == NULL){
 						//destruir thread
-						dadosProntos = OK;
 						return NULL;
 					}else{
 						destroy_log(FILE_NAME_SEC);
@@ -1147,9 +1142,7 @@ int hello(struct server_t *serverr){
 	if(hello == NULL){exit(ERROR);}
 	hello->opcode = OC_HELLO;
 	hello->c_type = CT_KEY;
-	char *ip_port = malloc(LOG_LENGTH);
-	cluster_ip_port(ip_port,myIP,myPort);
-	hello->content.key = ip_port;
+	hello->content.key = myPort;
 	struct message_t *resp = secundary_send_receive(serverr, hello);
 	if(resp == NULL){
 		//tentar enviar hello novamente depois de um tempo
@@ -1170,39 +1163,46 @@ int hello(struct server_t *serverr){
 	return OK;
 }
 
-int sendSpecialHello(){
-	printf("%d\n", dadosProntos );
-	while(dadosProntos != 0){}
-	printf("send special hello\n");
+int sendSpecialHello(struct server_t *serverr){
+	printf("send hello\n");
 	struct message_t *shello = (struct message_t *) malloc(sizeof(struct message_t));
 	if(shello == NULL){exit(ERROR);}
 	shello->opcode = OC_HELLO_SPECIAL;
 	shello->c_type = CT_KEY;
-	char *ip_port = malloc(LOG_LENGTH);
-	cluster_ip_port(ip_port,myIP,myPort);
-	shello->content.key = ip_port;
-	printf("enviar special hello\n");
-	params->msg = shello;
-	dadosProntos = ERROR;
-
-	pthread_cond_signal(&dados_para_enviar);
-	pthread_mutex_unlock(&mutex);
-
-	while(dadosProntos != OK){}
-
-	pthread_mutex_lock(&mutex);
-
-	if(params->threadResult == ERROR){
-		if(params->msg == NULL){
-			printf("secund morreu\n");
+	shello->content.key = myPort;
+	struct message_t *resp = secundary_send_receive(serverr, shello);
+	if(resp == NULL){
+		//tentar enviar hello novamente depois de um tempo
+		sleep(RETRY_SLEEP);
+		resp = secundary_send_receive(serverr, shello);
+		if(resp == NULL){
+			printf("ocorreu um erro ao conectar com o secundario\n");
 			return ERROR;
-		}else{
-			printf("tentar enviar novamente\n");
 		}
-	}else{
-		printf("envioy corretamente\n");
+	}else if(resp->content.result != OK){
+		printf("Problema no hello special, desligar ligação...\n");
+		return ERROR;
 	}
+	//considerar que correu tudo bem, agr vou ficar a espera
+	close(serverr->socket);
+	free(serverr);
 	free(shello);
-
+	return OK;
 }
+
+// int getIpFromSocket(int fd, char * ip){
+// 	struct sockaddr_in addr;
+// 	socklen_t addr_len = sizeof(addr);
+// 	int err = getpeername(sockfd, (struct sockaddr *) &addr, &addr_len);
+// 	if (err != 0) {
+// 		printf("erro ao obter ip do primario\n");
+// 		ip = NULL;
+// 		return ERROR;
+// 	}else{
+// 		char ipstr[LOG_LENGTH];
+// 		inet_ntop(AF_INET, &addr.sin_addr, ipstr, sizeof(ipstr));	
+// 		printf("Connection established successfully with %s:%i!\n", ipstr, ntohs(addr.sin_port));
+
+// 	}
+// }
 
