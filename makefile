@@ -101,5 +101,6 @@ clean:
 	rm -f obj/*.o
 	rm -f table-server table-client
 	rm -f *~
+	rm -f secServerFile.txt priServerFile.txt
 	
 .PHONY: clean
