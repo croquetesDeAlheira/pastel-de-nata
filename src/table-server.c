@@ -324,6 +324,7 @@ int network_receive_send(int sockfd){
 	int changeRoutine = FALSE;
 	int hello = FALSE;
 	int helloSuccess = FALSE;
+	int helloSpecial = FALSE;
 
 	/* Com a função read_all, receber num inteiro o tamanho da 
 	   mensagem de pedido que será recebida de seguida.*/
@@ -385,33 +386,41 @@ int network_receive_send(int sockfd){
 			msg_pedido->opcode = OC_UPDATE;
 		}else if( opcode == OC_PUT_S ){
 			msg_pedido->opcode = OC_PUT;
+		}else if( opcode == OC_HELLO_SPECIAL ){
+			//primario conectou e mandou hellospecial
+			helloSpecial = TRUE;
+			printf("hello special no secundario\n");
+			//gravar ip:porto
+			//msg-key ja vem no formato ip:porto
+			write_log(FILE_NAME_PRI, msg_pedido->content.key);
+
 		}
 
 		//caso não tenha mudado, veio de um cliente
-		if(opcode == msg_pedido->opcode){
+		if(opcode == msg_pedido->opcode && msg_pedido->opcode != OC_HELLO_SPECIAL){
 			//mudar rotina 
 			changeRoutine = TRUE;
 		}else{
 			//o pedido veio de um servidor primario
 			//escrever um ficheiro com o seu ip e porto
 			//se eu ainda nao tiver escrito um
-			struct sockaddr_in addr;
-			socklen_t addr_len = sizeof(addr);
-			int err = getpeername(sockfd, (struct sockaddr *) &addr, &addr_len);
-			if (err != 0) {
-   				// error
-			}else{
-				char ipstr[LOG_LENGTH];
-				inet_ntop(AF_INET, &addr.sin_addr, ipstr, sizeof(ipstr));	
-				printf("Connection established successfully with %s:%i!\n", ipstr, ntohs(addr.sin_port));
-				char *porto = "44901";
-				write_to_log(FILE_NAME_PRI, ipstr, porto);
-			}
+			// struct sockaddr_in addr;
+			// socklen_t addr_len = sizeof(addr);
+			// int err = getpeername(sockfd, (struct sockaddr *) &addr, &addr_len);
+			// if (err != 0) {
+   // 				// error
+			// }else{
+			// 	char ipstr[LOG_LENGTH];
+			// 	inet_ntop(AF_INET, &addr.sin_addr, ipstr, sizeof(ipstr));	
+			// 	printf("Connection established successfully with %s:%i!\n", ipstr, ntohs(addr.sin_port));
+			// 	char *porto = "44901";
+			// 	write_to_log(FILE_NAME_PRI, ipstr, porto);
+			//
 		}
 		//se nao mudou, simplesmente continua...
 	}
 	/* Processar a mensagem */
-	if(!hello){
+	if(!hello && !helloSpecial){
 		msg_resposta = invoke(msg_pedido);
 		if(msg_resposta == NULL){ // erro no invoke
 			return ERROR;
@@ -419,7 +428,11 @@ int network_receive_send(int sockfd){
 	}else{
 		msg_resposta = (struct message_t *)malloc(sizeof(struct message_t));
 		if(msg_resposta == NULL){return ERROR;}
-		msg_resposta->opcode = OC_HELLO;
+		if(hello){
+			msg_resposta->opcode = OC_HELLO;
+		}else{
+			msg_resposta->opcode = OC_HELLO_SPECIAL;
+		}
 		msg_resposta->c_type = CT_RESULT;
 		if(helloSuccess){
 			msg_resposta->content.result = OK;
@@ -531,7 +544,10 @@ int subRoutine(){
 		}
 		//o primario ganha poder do mutex
 		pthread_mutex_lock(&mutex);
-		lancaThread();					
+		dadosProntos = ERROR;
+		result = lancaThread();
+		if(result == OK)
+			sendSpecialHello();				
 
 
       	
@@ -668,6 +684,7 @@ int subRoutine(){
 								   4) iniciar rotina */
 		 						printf("iniciar change routine\n");
 		 						isPrimary = TRUE;
+		 						isSecondaryOn = FALSE;
 		 						destroy_log(FILE_NAME_PRI);
 		 						//write_to_log(FILE_NAME_SEC, myiP, myp);
 		 						printf("fim CHANGE_ROUTINE\n");
@@ -812,6 +829,7 @@ int main(int argc, char **argv){
 **
 **********************************/
 int lancaThread(){
+	printf("lancaThread\n");
 	if(server != NULL){
 		server = NULL;
 	}
@@ -827,10 +845,12 @@ int lancaThread(){
  		printf("ERROR; return code from pthread_create() is %d\n", threadCreated);
   		exit(ERROR);
 	}
+	printf("fim lancaThread\n");
 	return OK;
 }
 
-void *threaded_send_receive(void *parametro){  
+void *threaded_send_receive(void *parametro){
+		printf("start thread\n");
 		if(!isSecondaryOn){
 			printf(">>>>>> connecting... <<<<<<\n");
 				if(server == NULL){				
@@ -840,6 +860,7 @@ void *threaded_send_receive(void *parametro){
 					server = linkToSecServer(secIP,secPort);
 					if(server == NULL){
 						//destruir thread
+						dadosProntos = OK;
 						return NULL;
 					}else{
 						destroy_log(FILE_NAME_SEC);
@@ -1147,5 +1168,41 @@ int hello(struct server_t *serverr){
 	free(serverr);
 	free(hello);
 	return OK;
+}
+
+int sendSpecialHello(){
+	printf("%d\n", dadosProntos );
+	while(dadosProntos != 0){}
+	printf("send special hello\n");
+	struct message_t *shello = (struct message_t *) malloc(sizeof(struct message_t));
+	if(shello == NULL){exit(ERROR);}
+	shello->opcode = OC_HELLO_SPECIAL;
+	shello->c_type = CT_KEY;
+	char *ip_port = malloc(LOG_LENGTH);
+	cluster_ip_port(ip_port,myIP,myPort);
+	shello->content.key = ip_port;
+	printf("enviar special hello\n");
+	params->msg = shello;
+	dadosProntos = ERROR;
+
+	pthread_cond_signal(&dados_para_enviar);
+	pthread_mutex_unlock(&mutex);
+
+	while(dadosProntos != OK){}
+
+	pthread_mutex_lock(&mutex);
+
+	if(params->threadResult == ERROR){
+		if(params->msg == NULL){
+			printf("secund morreu\n");
+			return ERROR;
+		}else{
+			printf("tentar enviar novamente\n");
+		}
+	}else{
+		printf("envioy corretamente\n");
+	}
+	free(shello);
+
 }
 

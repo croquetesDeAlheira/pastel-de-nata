@@ -411,6 +411,9 @@ int opIsValid(short opcode){
 		case OC_HELLO:
 			return 1;
 			break;
+		case OC_HELLO_SPECIAL:
+			return 1;
+			break;
 		default :
 			return 0;
 	}

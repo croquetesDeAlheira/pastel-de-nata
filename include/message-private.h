@@ -18,6 +18,7 @@
 #define OC_UPDATE_S   	300
 #define OC_PUT_S	400
 #define OC_HELLO 500
+#define OC_HELLO_SPECIAL 600
 
 //#include "table-private.h" /* For table_free_keys() */
 #include "message.h"
