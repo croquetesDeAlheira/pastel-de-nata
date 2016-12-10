@@ -935,6 +935,7 @@ void *threaded_send_receive(void *parametro){
 							params->threadResult = OK;
 						}else{
 							params->threadResult = ERROR;
+							isSecondaryOn = FALSE;
 						}
 					}else{
 						params->threadResult = ERROR;
@@ -1147,7 +1148,7 @@ int update_state(struct server_t *server) {
 						printf("tentar enviar novamente\n");
 					}
 				}else{
-					printf("envioy corretamente\n");
+					printf("enviou corretamente\n");
 				}
 			}
 			pedido->opcode = OC_GET;
@@ -1216,20 +1217,3 @@ int sendSpecialHello(struct server_t *serverr){
 	free(shello);
 	return OK;
 }
-
-// int getIpFromSocket(int fd, char * ip){
-// 	struct sockaddr_in addr;
-// 	socklen_t addr_len = sizeof(addr);
-// 	int err = getpeername(sockfd, (struct sockaddr *) &addr, &addr_len);
-// 	if (err != 0) {
-// 		printf("erro ao obter ip do primario\n");
-// 		ip = NULL;
-// 		return ERROR;
-// 	}else{
-// 		char ipstr[LOG_LENGTH];
-// 		inet_ntop(AF_INET, &addr.sin_addr, ipstr, sizeof(ipstr));	
-// 		printf("Connection established successfully with %s:%i!\n", ipstr, ntohs(addr.sin_port));
-
-// 	}
-// }
-
