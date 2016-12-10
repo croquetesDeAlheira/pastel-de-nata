@@ -710,14 +710,14 @@ int main(int argc, char **argv){
 	/* o numero de argumentos eh diferente entre secundario e primario 
 		primario = programa + seuPorto + ipSecundario + portoSecundario + listSize
 		secundario = programa + seuPorto + listSize*/
-	if(argc == 2){
+	if(argc == 5){
 		//primario deve ser 5 depois
 		isPrimary = TRUE;
 
-		myPort = /*argv[1]*/ "44901";
-		secIP = /*argv[2]*/ "127.0.0.1";
-		secPort = /*argv[3]*/ "44902";
-		listSize = /*argv[4]*/ "10";
+		myPort = argv[1];
+		secIP = argv[2];
+		secPort = argv[3];
+		listSize = argv[4];
 
 
 		//tenta conectar com algum servidor primario
@@ -761,12 +761,12 @@ int main(int argc, char **argv){
         free(address_port);
 		subRoutine();
 
-	}else if(argc == 1){
+	}else if(argc == 3){
 		//secundario
 		isPrimary = FALSE;
 
-		myPort = /*argv[1]*/ "44902";
-		listSize = /*argv[2]*/ "10";
+		myPort = argv[1];
+		listSize = argv[2];
 
 		//tenta conectar com algum servidor primario
 		char *address_port = malloc(LOG_LENGTH);
