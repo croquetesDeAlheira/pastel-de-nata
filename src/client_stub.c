@@ -200,7 +200,7 @@ struct rtable_t *rtable_bind(const char *address_port){
 	
 	rtable->server = network_connect(address_port);
 	if(rtable->server == NULL){
-		perror("Problema na conecção\n");
+		//perror("Problema na conecção\n");
 		return NULL;
 	}
 	return rtable;	
@@ -456,7 +456,7 @@ struct rtable_t *main_bind_rtable(const char *server1, const char *server2) {
 	if (rtable == NULL) {
 		// Server1 indisponivel
 		// Aguarda e tenta de novo
-		printf("Tabela indisponivel... Tentar novamente\n");
+		// printf("Tabela indisponivel... Tentar novamente\n");
 		sleep(RETRY_TIME);
 		rtable = rtable_bind(server1);
 
@@ -467,7 +467,7 @@ struct rtable_t *main_bind_rtable(const char *server1, const char *server2) {
 			if (rtable == NULL) {
 				// Server 2 indisponivel
 				// Aguarda e tenta de novo
-				printf("Tabela indisponivel...Tentar novamente\n");
+				// printf("Tabela indisponivel...Tentar novamente\n");
 				sleep(RETRY_TIME);
 				rtable = rtable_bind(server2);
 				if (rtable == NULL) {
