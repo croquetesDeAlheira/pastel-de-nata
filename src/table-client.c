@@ -219,9 +219,9 @@ int main(int argc, char **argv){
 	Chama o rtable_bind e aloca na tabela remota 
 	os endereços dos servidores
 	*/
-	printf("will bind now\n");
+	//printf("will bind now\n");
 	table = main_bind_rtable(argv[1], argv[2]);
-	printf("binded\n");
+	//printf("binded\n");
 
 	if (table == NULL) {
 		perror("Tabela indisponivel, Por favor tente mais tarde.\n");

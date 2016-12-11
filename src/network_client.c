@@ -75,7 +75,7 @@ struct server_t *network_connect(const char *address_port){
 	int sockt;
 	// Também pode ser usado o SOCK_DGRAM no tipo, UDP
 	if((sockt = socket(AF_INET, SOCK_STREAM, 0)) < 0){
-		perror("Problema na criação do socket\n");
+		//perror("Problema na criação do socket\n");
 		free(server->addr);
 		free(server);
 		return NULL;
@@ -83,7 +83,7 @@ struct server_t *network_connect(const char *address_port){
 
 	// Estabeleber ligação
 	if(connect(sockt, (struct sockaddr *) (server->addr), sizeof(struct sockaddr_in)) < 0){
-		perror("Problema a conectar ao servidor\n");
+		//perror("Problema a conectar ao servidor\n");
 		free(server->addr);
 		free(server);
 		return NULL;
@@ -185,7 +185,7 @@ int write_all(int sock, char *buf, int len){
 		}
 		if(res < 0){
 			if(errno == EINTR) continue;
-			perror("write failed:");
+			//perror("write failed:");
 			return res;
 		}
 		buf+= res;
@@ -207,7 +207,7 @@ int read_all(int sock, char *buf, int len){
 		}
 		if(res < 0){
 			if(errno == EINTR) continue;
-			perror("read failed:");
+			//perror("read failed:");
 			return res;
 		}
 		buf+= res;

@@ -77,17 +77,17 @@ struct message_t *retry_send_receive(struct rtable_t *table, struct message_t *m
 struct message_t *retry_alive_server(struct rtable_t *table, struct message_t *msg_pedido, struct message_t *msg_resposta){
 
 	int rc = retry_connect(table);
-	printf("A tentar %s\n", get_prim(table));
+	//printf("A tentar %s\n", get_prim(table));
 	if(rc == OK){
 		msg_resposta = retry_send_receive(table, msg_pedido, msg_resposta);
-		if(msg_resposta == NULL)
-			printf("msg_resposta é null\n");	
+		//if(msg_resposta == NULL)
+		//	printf("msg_resposta é null\n");	
 	}else{
 		// Alterar idenficador de quem é o primário 2 -> 1
 		switch_pserver(table);
 		network_close(table->server);
 		rc = retry_connect(table);
-		printf("A tentar %s\n", get_prim(table));
+		//printf("A tentar %s\n", get_prim(table));
 		if(rc == OK)
 			msg_resposta = retry_send_receive(table, msg_pedido, msg_resposta);
 		else{
@@ -96,7 +96,7 @@ struct message_t *retry_alive_server(struct rtable_t *table, struct message_t *m
 			switch_pserver(table);
 			network_close(table->server);
 			rc = retry_connect(table);
-			printf("A tentar %s\n", get_prim(table));
+			//printf("A tentar %s\n", get_prim(table));
 			if(rc == OK)
 				msg_resposta = retry_send_receive(table, msg_pedido, msg_resposta);
 			else
@@ -112,20 +112,20 @@ struct message_t *network_reconnect(struct rtable_t *table, struct message_t *ms
 
 	if(table->server != NULL){
 		// Segunda tentativa a contactar o servidor primário
-		printf("table server != null\n");
+		//printf("table server != null\n");
 		msg_resposta = retry_send_receive(table, msg_pedido, msg_resposta);
 	
 		if(msg_resposta == NULL){
-			perror("Sem resposta do servidor primário\n");
-			printf("Estabelecer conexão ao secundário\n");					
+			//perror("Sem resposta do servidor primário\n");
+			//printf("Estabelecer conexão ao secundário\n");					
 			// Alterar idenficador de quem é o primário 1 -> 2
 			switch_pserver(table);
 			network_close(table->server);
 			msg_resposta = retry_alive_server(table, msg_pedido, msg_resposta);
 		}	
 	}else{ // table->server == NULL
-		perror("Sem resposta do servidor primário\n");
-		printf("Estabelecer conexão ao secundário\n");				
+		//perror("Sem resposta do servidor primário\n");
+		//printf("Estabelecer conexão ao secundário\n");				
 		// Alterar idenficador de quem é o primário 1 -> 2
 		switch_pserver(table);
 		network_close(table->server);
@@ -142,22 +142,21 @@ struct message_t *network_with_retry(struct rtable_t *table, struct message_t *m
 	struct message_t *msg_resposta;
 	// Primeira tentativa a contactar servidor primário
 	msg_resposta = network_send_receive(table->server, msg_pedido);
-	printf("msg enviada nsr\n");
 	if(msg_resposta == NULL){
 		// Não conseguiu contactar
 		// Aguarda um tempo e tenta de novo
-		perror("Problema com a mensagem de resposta, tentar novamente..\n");
+		//perror("Problema com a mensagem de resposta, tentar novamente..\n");
 		sleep(RETRY_TIME);
 
 		// Fecha a ligação
 		if(network_close(table->server) < 0){
-			perror("Problema ao terminar a associação entre cliente e tabela remota\n");
+			//perror("Problema ao terminar a associação entre cliente e tabela remota\n");
 		}
 		
 		msg_resposta = network_reconnect(table, msg_pedido, msg_resposta);
-		if(msg_resposta == NULL){
-			printf("msg_resposta no network_with retry está a null\n");
-		}
+		//if(msg_resposta == NULL){
+			//printf("msg_resposta no network_with retry está a null\n");
+		//}
 		// Nova ligação
 		/*// Tentar conectar novamente ao primário
 		table->server = network_connect(table->ip_addr1);
